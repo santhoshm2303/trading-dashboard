@@ -1,24 +1,21 @@
 {
   "version": 2,
-  "outputDirectory": "public",
-  "builds": [
-    {
-      "src": "api/*.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "public/**",
-      "use": "@vercel/static"
-    }
-  ],
   "routes": [
     {
-      "src": "/api/(.*)",
-      "dest": "/api/$1.js"
+      "src": "/api/sheets-sync",
+      "dest": "/api/sheets-sync.js"
+    },
+    {
+      "src": "/api/add-transaction",
+      "dest": "/api/add-transaction.js"
+    },
+    {
+      "src": "/api/fetch-predictions",
+      "dest": "/api/fetch-predictions.js"
     },
     {
       "src": "/(.*)",
-      "dest": "/public/$1"
+      "dest": "/index.html"
     }
   ]
 }
