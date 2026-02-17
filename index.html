@@ -1,0 +1,2137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trading Command Center</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            'mono': ['IBM Plex Mono', 'monospace'],
+            'sans': ['Inter', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+      min-height: 100vh;
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .animate-slide-in {
+      animation: slideIn 0.4s ease-out forwards;
+    }
+
+    .animate-slide-down {
+      animation: slideDown 0.3s ease-out forwards;
+    }
+
+    .glass-panel {
+      background: rgba(15, 23, 42, 0.8);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(148, 163, 184, 0.15);
+    }
+
+    .hover-lift {
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .hover-lift:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 20px 60px -15px rgba(6, 182, 212, 0.4);
+      border-color: rgba(6, 182, 212, 0.3);
+    }
+
+    .modal-backdrop {
+      animation: fadeIn 0.2s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    .profit { color: #10b981; }
+    .loss { color: #ef4444; }
+
+    input, select, textarea {
+      background: rgba(15, 23, 42, 0.8) !important;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      color: white !important;
+      transition: all 0.2s;
+    }
+
+    input::placeholder, textarea::placeholder {
+      color: rgba(156, 163, 175, 0.6) !important;
+    }
+
+    input:-webkit-autofill,
+    input:-webkit-autofill:hover,
+    input:-webkit-autofill:focus {
+      -webkit-text-fill-color: white !important;
+      -webkit-box-shadow: 0 0 0px 1000px rgba(15, 23, 42, 0.8) inset !important;
+      box-shadow: 0 0 0px 1000px rgba(15, 23, 42, 0.8) inset !important;
+    }
+
+    select option {
+      background: #0f172a;
+      color: white;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: #06b6d4;
+      box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.1);
+    }
+
+    .tab-active {
+      background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+      color: white;
+      box-shadow: 0 4px 12px rgba(6, 182, 212, 0.3);
+    }
+
+    .success-toast {
+      animation: slideDown 0.3s ease-out, fadeIn 0.3s ease-out;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  
+  <script>
+    const { useState, useEffect, useRef, createElement: h } = React;
+
+    // Utility functions
+    const parseNumber = (val) => parseFloat(String(val).replace(/,/g, '') || 0);
+    const formatCurrency = (val, decimals = 2) => val.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+    const formatDate = (dateStr) => {
+      const [day, month, year] = dateStr.split('/');
+      return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    };
+    const toYYYYMMDD = (dateStr) => {
+      const [day, month, year] = dateStr.split('/');
+      return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+    };
+    const toDDMMYYYY = (dateStr) => {
+      const [year, month, day] = dateStr.split('-');
+      return `${day}/${month}/${year}`;
+    };
+
+    const FOREX_RATE = 1.42572;
+    const EXCHANGE_CURRENCY = {
+      'ASX': 'AUD',
+      'NASDAQ': 'USD',
+      'NYSE': 'USD',
+      'NYSEAMERICAN': 'USD',
+      'NYSEARCA': 'USD'
+    };
+
+    // Calculate P&L
+    const calculatePnL = (holding) => {
+      let totalProfit = 0;
+      let purchaseQueue = [...holding.purchases].sort((a, b) => new Date(toYYYYMMDD(a.date)) - new Date(toYYYYMMDD(b.date)));
+      
+      holding.sales.forEach(sale => {
+        let remainingSaleVolume = parseNumber(sale.volume);
+        const salePrice = parseNumber(sale.price);
+        const saleFee = parseNumber(sale.fee);
+
+        while (remainingSaleVolume > 0 && purchaseQueue.length > 0) {
+          const purchase = purchaseQueue[0];
+          const availableVolume = purchase.remainingVolume || purchase.volume;
+          const volumeToSell = Math.min(remainingSaleVolume, availableVolume);
+          
+          const saleRevenue = volumeToSell * salePrice - (saleFee * (volumeToSell / parseNumber(sale.volume)));
+          const purchaseCost = volumeToSell * purchase.price + (purchase.fee * (volumeToSell / purchase.volume));
+          
+          totalProfit += saleRevenue - purchaseCost;
+
+          if (volumeToSell === availableVolume) {
+            purchaseQueue.shift();
+          } else {
+            purchase.remainingVolume = availableVolume - volumeToSell;
+          }
+          
+          remainingSaleVolume -= volumeToSell;
+        }
+      });
+
+      return totalProfit;
+    };
+
+    // Stock Modal Component
+    function StockModal({ stock, onClose, activeTab, setActiveTab }) {
+      const chartRef = useRef(null);
+      const chartInstance = useRef(null);
+
+      const pnl = calculatePnL(stock);
+
+      useEffect(() => {
+        if (activeTab === 'performance' && chartRef.current) {
+          if (chartInstance.current) {
+            chartInstance.current.destroy();
+          }
+
+          const purchases = stock.purchases.sort((a, b) => {
+            const dateA = toYYYYMMDD(a.date);
+            const dateB = toYYYYMMDD(b.date);
+            return new Date(dateA) - new Date(dateB);
+          });
+
+          const sales = stock.sales.sort((a, b) => {
+            const dateA = toYYYYMMDD(a.date);
+            const dateB = toYYYYMMDD(b.date);
+            return new Date(dateA) - new Date(dateB);
+          });
+
+          const allDates = [...purchases.map(p => p.date), ...sales.map(s => s.date)];
+          const labels = allDates.map(d => formatDate(d));
+
+          const buyPrices = purchases.map(p => p.price);
+          const sellPrices = sales.map(s => parseNumber(s.price));
+
+          const ctx = chartRef.current.getContext('2d');
+          chartInstance.current = new Chart(ctx, {
+            type: 'line',
+            data: {
+              labels: labels,
+              datasets: [
+                {
+                  label: 'Buy Price',
+                  data: [...buyPrices, ...Array(sales.length).fill(null)],
+                  borderColor: '#06b6d4',
+                  backgroundColor: 'rgba(6, 182, 212, 0.1)',
+                  pointBackgroundColor: '#06b6d4',
+                  pointRadius: 6,
+                  pointHoverRadius: 8,
+                  tension: 0.4
+                },
+                {
+                  label: 'Sell Price',
+                  data: [...Array(purchases.length).fill(null), ...sellPrices],
+                  borderColor: '#f97316',
+                  backgroundColor: 'rgba(249, 115, 22, 0.1)',
+                  pointBackgroundColor: '#f97316',
+                  pointRadius: 6,
+                  pointHoverRadius: 8,
+                  tension: 0.4
+                }
+              ]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: {
+                  labels: { color: '#e5e7eb', font: { size: 12, family: 'Inter' } }
+                },
+                tooltip: {
+                  backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                  titleColor: '#e5e7eb',
+                  bodyColor: '#e5e7eb',
+                  borderColor: 'rgba(148, 163, 184, 0.2)',
+                  borderWidth: 1
+                }
+              },
+              scales: {
+                y: {
+                  ticks: { color: '#9ca3af' },
+                  grid: { color: 'rgba(148, 163, 184, 0.1)' }
+                },
+                x: {
+                  ticks: { color: '#9ca3af' },
+                  grid: { color: 'rgba(148, 163, 184, 0.1)' }
+                }
+              }
+            }
+          });
+        }
+
+        return () => {
+          if (chartInstance.current) {
+            chartInstance.current.destroy();
+          }
+        };
+      }, [activeTab, stock]);
+
+      return h('div', {
+        className: 'modal-backdrop fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto',
+        onClick: onClose
+      },
+        h('div', {
+          className: 'glass-panel rounded-2xl max-w-5xl w-full max-h-[90vh] overflow-y-auto my-8',
+          onClick: e => e.stopPropagation()
+        },
+          // Header
+          h('div', { className: 'sticky top-0 glass-panel border-b border-gray-700 p-6 flex justify-between items-start z-10' },
+            h('div', null,
+              h('div', { className: 'flex items-center gap-3 mb-2' },
+                h('h2', { className: 'text-4xl font-bold font-mono text-cyan-400' }, stock.code),
+                h('span', { className: 'px-3 py-1 bg-gradient-to-r from-cyan-500/20 to-blue-600/20 border border-cyan-500/30 rounded-full text-sm font-semibold text-cyan-300' }, stock.index)
+              ),
+              h('p', { className: 'text-gray-400' }, `${formatCurrency(stock.remainingVolume, 0)} shares held · ${stock.currency}`)
+            ),
+            h('button', {
+              onClick: onClose,
+              className: 'text-gray-400 hover:text-white text-3xl leading-none transition'
+            }, '×')
+          ),
+
+          // Stats grid
+          h('div', { className: 'p-6 grid grid-cols-2 md:grid-cols-4 gap-4' },
+            h('div', { className: 'glass-panel p-4 rounded-xl border border-cyan-500/20' },
+              h('div', { className: 'text-xs text-gray-400 mb-1 uppercase tracking-wide' }, 'Avg Buy Price'),
+              h('div', { className: 'text-2xl font-bold font-mono text-white' }, 
+                `${stock.currency === 'USD' ? '$' : 'A$'}${formatCurrency(stock.avgPrice)}`
+              )
+            ),
+            h('div', { className: 'glass-panel p-4 rounded-xl border border-cyan-500/20' },
+              h('div', { className: 'text-xs text-gray-400 mb-1 uppercase tracking-wide' }, 'Total Cost'),
+              h('div', { className: 'text-2xl font-bold font-mono text-white' }, 
+                `${stock.currency === 'USD' ? '$' : 'A$'}${formatCurrency(stock.currentValue, 0)}`
+              )
+            ),
+            h('div', { className: 'glass-panel p-4 rounded-xl border border-cyan-500/20' },
+              h('div', { className: 'text-xs text-gray-400 mb-1 uppercase tracking-wide' }, 'Purchases'),
+              h('div', { className: 'text-2xl font-bold font-mono text-cyan-400' }, stock.purchases.length)
+            ),
+            h('div', { className: 'glass-panel p-4 rounded-xl border border-orange-500/20' },
+              h('div', { className: 'text-xs text-gray-400 mb-1 uppercase tracking-wide' }, 'Sales'),
+              h('div', { className: 'text-2xl font-bold font-mono text-orange-400' }, stock.sales.length)
+            )
+          ),
+
+          // Tabs
+          h('div', { className: 'px-6 pt-4' },
+            h('div', { className: 'flex gap-2 border-b border-gray-700' },
+              h('button', {
+                onClick: () => setActiveTab('transactions'),
+                className: `px-6 py-3 rounded-t-lg font-semibold transition ${activeTab === 'transactions' ? 'tab-active' : 'text-gray-400 hover:text-white hover:bg-slate-800/50'}`
+              }, 'Transactions'),
+              h('button', {
+                onClick: () => setActiveTab('performance'),
+                className: `px-6 py-3 rounded-t-lg font-semibold transition ${activeTab === 'performance' ? 'tab-active' : 'text-gray-400 hover:text-white hover:bg-slate-800/50'}`
+              }, 'Performance'),
+              h('button', {
+                onClick: () => setActiveTab('analysis'),
+                className: `px-6 py-3 rounded-t-lg font-semibold transition ${activeTab === 'analysis' ? 'tab-active' : 'text-gray-400 hover:text-white hover:bg-slate-800/50'}`
+              }, 'Analysis')
+            )
+          ),
+
+          // Content
+          h('div', { className: 'p-6' },
+            // Transactions Tab
+            activeTab === 'transactions' && h('div', null,
+              h('h3', { className: 'text-xl font-bold text-white mb-4 flex items-center gap-2' },
+                h('span', { className: 'text-2xl' }, '📈'),
+                'Purchase History'
+              ),
+              h('div', { className: 'space-y-3 mb-8' },
+                ...stock.purchases.map((txn, idx) =>
+                  h('div', { key: idx, className: 'glass-panel p-5 rounded-xl border border-cyan-500/20 flex justify-between items-center hover-lift' },
+                    h('div', null,
+                      h('div', { className: 'font-mono text-white font-bold text-lg mb-1' }, 
+                        `${formatCurrency(txn.volume, 0)} shares @ ${stock.currency === 'USD' ? '$' : 'A$'}${formatCurrency(txn.price)}`
+                      ),
+                      h('div', { className: 'text-sm text-gray-400' }, 
+                        `${formatDate(txn.date)} · ${txn.broker}`
+                      )
+                    ),
+                    h('div', { className: 'text-right' },
+                      h('div', { className: 'font-mono text-white font-bold text-xl' }, 
+                        `${stock.currency === 'USD' ? '$' : 'A$'}${formatCurrency(txn.volume * txn.price + txn.fee)}`
+                      ),
+                      h('div', { className: 'text-xs text-gray-500 mt-1' }, 
+                        `Fee: ${stock.currency === 'USD' ? '$' : 'A$'}${formatCurrency(txn.fee)}`
+                      )
+                    )
+                  )
+                )
+              ),
+
+              stock.sales.length > 0 && h('div', null,
+                h('h3', { className: 'text-xl font-bold text-white mb-4 flex items-center gap-2' },
+                  h('span', { className: 'text-2xl' }, '📉'),
+                  'Sale History'
+                ),
+                h('div', { className: 'space-y-3' },
+                  ...stock.sales.map((txn, idx) =>
+                    h('div', { key: idx, className: 'glass-panel p-5 rounded-xl border-l-4 border-orange-500 flex justify-between items-center hover-lift' },
+                      h('div', null,
+                        h('div', { className: 'font-mono text-white font-bold text-lg mb-1' }, 
+                          `${formatCurrency(parseNumber(txn.volume), 0)} shares @ ${stock.currency === 'USD' ? '$' : 'A$'}${formatCurrency(parseNumber(txn.price))}`
+                        ),
+                        h('div', { className: 'text-sm text-gray-400' }, 
+                          `${formatDate(txn.date)} · ${txn.broker}`
+                        )
+                      ),
+                      h('div', { className: 'text-right' },
+                        h('div', { className: 'font-mono text-orange-400 font-bold text-xl' }, 
+                          `${stock.currency === 'USD' ? '$' : 'A$'}${formatCurrency(parseNumber(txn.volume) * parseNumber(txn.price) - parseNumber(txn.fee))}`
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            ),
+
+            // Performance Tab
+            activeTab === 'performance' && h('div', null,
+              h('div', { className: 'glass-panel p-6 rounded-xl border border-cyan-500/20 mb-6' },
+                h('h3', { className: 'text-xl font-bold text-white mb-4' }, 'Price History'),
+                h('div', { style: { height: '400px' } },
+                  h('canvas', { ref: chartRef })
+                )
+              ),
+              h('div', { className: 'grid grid-cols-1 md:grid-cols-2 gap-4' },
+                h('div', { className: 'glass-panel p-6 rounded-xl border border-green-500/20' },
+                  h('div', { className: 'text-sm text-gray-400 mb-2' }, 'Realized P&L'),
+                  h('div', { className: `text-3xl font-bold font-mono ${pnl >= 0 ? 'profit' : 'loss'}` }, 
+                    `${pnl >= 0 ? '+' : ''}${stock.currency === 'USD' ? '$' : 'A$'}${formatCurrency(Math.abs(pnl))}`
+                  ),
+                  h('div', { className: 'text-xs text-gray-500 mt-2' }, 'From completed sales')
+                ),
+                h('div', { className: 'glass-panel p-6 rounded-xl border border-blue-500/20' },
+                  h('div', { className: 'text-sm text-gray-400 mb-2' }, 'Holding Period'),
+                  h('div', { className: 'text-3xl font-bold font-mono text-white' }, 
+                    stock.purchases.length > 0 
+                      ? Math.floor((new Date() - new Date(toYYYYMMDD(stock.purchases[0].date))) / (1000 * 60 * 60 * 24)) + ' days'
+                      : 'N/A'
+                  ),
+                  h('div', { className: 'text-xs text-gray-500 mt-2' }, 'Since first purchase')
+                )
+              )
+            ),
+
+            // Analysis Tab
+            activeTab === 'analysis' && h('div', { className: 'space-y-6' },
+              h('div', { className: 'glass-panel p-6 rounded-xl border border-cyan-500/20' },
+                h('h3', { className: 'text-lg font-bold text-white mb-4' }, 'Position Summary'),
+                h('div', { className: 'grid grid-cols-2 gap-4' },
+                  h('div', null,
+                    h('div', { className: 'text-sm text-gray-400 mb-1' }, 'Total Volume Bought'),
+                    h('div', { className: 'text-xl font-mono text-white font-semibold' }, formatCurrency(stock.totalVolume, 0))
+                  ),
+                  h('div', null,
+                    h('div', { className: 'text-sm text-gray-400 mb-1' }, 'Total Volume Sold'),
+                    h('div', { className: 'text-xl font-mono text-white font-semibold' }, 
+                      formatCurrency(stock.sales.reduce((sum, s) => sum + parseNumber(s.volume), 0), 0)
+                    )
+                  ),
+                  h('div', null,
+                    h('div', { className: 'text-sm text-gray-400 mb-1' }, 'Remaining Volume'),
+                    h('div', { className: 'text-xl font-mono text-cyan-400 font-bold' }, formatCurrency(stock.remainingVolume, 0))
+                  ),
+                  h('div', null,
+                    h('div', { className: 'text-sm text-gray-400 mb-1' }, 'Total Fees Paid'),
+                    h('div', { className: 'text-xl font-mono text-white font-semibold' }, 
+                      `${stock.currency === 'USD' ? '$' : 'A$'}${formatCurrency(
+                        stock.purchases.reduce((sum, p) => sum + p.fee, 0) +
+                        stock.sales.reduce((sum, s) => sum + parseNumber(s.fee), 0)
+                      )}`
+                    )
+                  )
+                )
+              ),
+              h('div', { className: 'glass-panel p-6 rounded-xl border border-orange-500/20' },
+                h('h3', { className: 'text-lg font-bold text-white mb-4' }, 'Trading Activity'),
+                h('div', { className: 'space-y-3' },
+                  h('div', { className: 'flex justify-between items-center' },
+                    h('span', { className: 'text-gray-300' }, 'First Purchase'),
+                    h('span', { className: 'font-mono text-white' }, 
+                      stock.purchases.length > 0 ? formatDate(stock.purchases[0].date) : 'N/A'
+                    )
+                  ),
+                  h('div', { className: 'flex justify-between items-center' },
+                    h('span', { className: 'text-gray-300' }, 'Latest Purchase'),
+                    h('span', { className: 'font-mono text-white' }, 
+                      stock.purchases.length > 0 ? formatDate(stock.purchases[stock.purchases.length - 1].date) : 'N/A'
+                    )
+                  ),
+                  stock.sales.length > 0 && h('div', { className: 'flex justify-between items-center' },
+                    h('span', { className: 'text-gray-300' }, 'Latest Sale'),
+                    h('span', { className: 'font-mono text-orange-400' }, formatDate(stock.sales[stock.sales.length - 1].date))
+                  )
+                )
+              )
+            )
+          )
+        )
+      );
+    }
+
+    // Add Transaction Form Component
+    function AddTransactionForm({ onClose, onSubmit, formData, setFormData, submitting }) {
+      return h('div', {
+        className: 'modal-backdrop fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50',
+        onClick: onClose
+      },
+        h('div', {
+          className: 'glass-panel rounded-2xl max-w-2xl w-full p-8 animate-slide-down',
+          onClick: e => e.stopPropagation()
+        },
+          h('div', { className: 'flex justify-between items-center mb-6' },
+            h('h2', { className: 'text-3xl font-bold text-cyan-400' }, '+ Add Transaction'),
+            h('button', {
+              onClick: onClose,
+              className: 'text-gray-400 hover:text-white text-3xl leading-none transition'
+            }, '×')
+          ),
+
+          h('form', { onSubmit },
+            h('div', { className: 'grid grid-cols-1 md:grid-cols-2 gap-4 mb-6' },
+              // Date
+              h('div', null,
+                h('label', { className: 'block text-sm font-semibold text-gray-300 mb-2' }, 'Date'),
+                h('input', {
+                  type: 'date',
+                  value: formData.date,
+                  onChange: e => setFormData({ ...formData, date: e.target.value }),
+                  className: 'w-full px-4 py-3 rounded-lg font-mono',
+                  required: true
+                })
+              ),
+
+              // Stock Code
+              h('div', null,
+                h('label', { className: 'block text-sm font-semibold text-gray-300 mb-2' }, 'Stock Code'),
+                h('input', {
+                  type: 'text',
+                  value: formData.code,
+                  onChange: e => setFormData({ ...formData, code: e.target.value.toUpperCase() }),
+                  placeholder: 'e.g., BMNR, TLX.AX',
+                  className: 'w-full px-4 py-3 rounded-lg font-mono uppercase',
+                  required: true
+                })
+              ),
+
+              // Exchange
+              h('div', null,
+                h('label', { className: 'block text-sm font-semibold text-gray-300 mb-2' }, 'Exchange'),
+                h('select', {
+                  value: formData.index,
+                  onChange: e => setFormData({ ...formData, index: e.target.value }),
+                  className: 'w-full px-4 py-3 rounded-lg',
+                  required: true
+                },
+                  h('option', { value: 'ASX' }, 'ASX'),
+                  h('option', { value: 'NASDAQ' }, 'NASDAQ'),
+                  h('option', { value: 'NYSE' }, 'NYSE'),
+                  h('option', { value: 'NYSEAMERICAN' }, 'NYSEAMERICAN')
+                )
+              ),
+
+              // Type
+              h('div', null,
+                h('label', { className: 'block text-sm font-semibold text-gray-300 mb-2' }, 'Type'),
+                h('select', {
+                  value: formData.type,
+                  onChange: e => setFormData({ ...formData, type: e.target.value }),
+                  className: 'w-full px-4 py-3 rounded-lg',
+                  required: true
+                },
+                  h('option', { value: 'buy' }, 'Buy'),
+                  h('option', { value: 'sell' }, 'Sell')
+                )
+              ),
+
+              // Volume
+              h('div', null,
+                h('label', { className: 'block text-sm font-semibold text-gray-300 mb-2' }, 'Volume'),
+                h('input', {
+                  type: 'number',
+                  value: formData.volume,
+                  onChange: e => setFormData({ ...formData, volume: e.target.value }),
+                  placeholder: 'Number of shares',
+                  className: 'w-full px-4 py-3 rounded-lg font-mono',
+                  required: true,
+                  min: '0',
+                  step: 'any'
+                })
+              ),
+
+              // Price
+              h('div', null,
+                h('label', { className: 'block text-sm font-semibold text-gray-300 mb-2' }, 'Price per Share'),
+                h('input', {
+                  type: 'number',
+                  value: formData.price,
+                  onChange: e => setFormData({ ...formData, price: e.target.value }),
+                  placeholder: '0.00',
+                  className: 'w-full px-4 py-3 rounded-lg font-mono',
+                  required: true,
+                  min: '0',
+                  step: '0.01'
+                })
+              ),
+
+              // Fee
+              h('div', null,
+                h('label', { className: 'block text-sm font-semibold text-gray-300 mb-2' }, 'Brokerage Fee'),
+                h('input', {
+                  type: 'number',
+                  value: formData.fee,
+                  onChange: e => setFormData({ ...formData, fee: e.target.value }),
+                  placeholder: '0.00',
+                  className: 'w-full px-4 py-3 rounded-lg font-mono',
+                  required: true,
+                  min: '0',
+                  step: '0.01'
+                })
+              ),
+
+              // Broker
+              h('div', null,
+                h('label', { className: 'block text-sm font-semibold text-gray-300 mb-2' }, 'Broker'),
+                h('select', {
+                  value: formData.broker,
+                  onChange: e => setFormData({ ...formData, broker: e.target.value }),
+                  className: 'w-full px-4 py-3 rounded-lg',
+                  required: true
+                },
+                  h('option', { value: 'CommSec' }, 'CommSec'),
+                  h('option', { value: 'Selfwealth' }, 'Selfwealth')
+                )
+              ),
+
+              // Buyers Name
+              h('div', null,
+                h('label', { className: 'block text-sm font-semibold text-gray-300 mb-2' }, 'Buyer\'s Name'),
+                h('select', {
+                  value: formData.buyersName,
+                  onChange: e => setFormData({ ...formData, buyersName: e.target.value }),
+                  className: 'w-full px-4 py-3 rounded-lg',
+                  required: true
+                },
+                  h('option', { value: 'Santhosh' }, 'Santhosh'),
+                  h('option', { value: 'Meghna' }, 'Meghna')
+                )
+              )
+            ),
+
+            // Notes
+            h('div', { className: 'mb-6' },
+              h('label', { className: 'block text-sm font-semibold text-gray-300 mb-2' }, 'Notes (Optional)'),
+              h('textarea', {
+                value: formData.notes,
+                onChange: e => setFormData({ ...formData, notes: e.target.value }),
+                placeholder: 'Any additional notes...',
+                className: 'w-full px-4 py-3 rounded-lg resize-none',
+                rows: 3
+              })
+            ),
+
+            // Submit
+            h('div', { className: 'flex gap-3' },
+              h('button', {
+                type: 'submit',
+                disabled: submitting,
+                className: 'flex-1 px-6 py-4 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white rounded-lg font-bold text-lg transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed'
+              }, submitting ? 'Adding...' : 'Add Transaction'),
+              h('button', {
+                type: 'button',
+                onClick: onClose,
+                className: 'px-6 py-4 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-semibold transition'
+              }, 'Cancel')
+            )
+          )
+        )
+      );
+    }
+
+    // Main Dashboard Component
+    function TradingDashboard() {
+      const [data, setData] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState(null);
+      const [selectedStock, setSelectedStock] = useState(null);
+      const [showModal, setShowModal] = useState(false);
+      const [currencyView, setCurrencyView] = useState('AUD');
+      const [filterExchange, setFilterExchange] = useState('ALL');
+      const [activeTab, setActiveTab] = useState('transactions');
+      const [showAddTransaction, setShowAddTransaction] = useState(false);
+      const [toast, setToast] = useState(null);
+      const [submitting, setSubmitting] = useState(false);
+      const [mainView, setMainView] = useState('portfolio');
+      const [selectedTicker, setSelectedTicker] = useState(null);
+      const [predictions, setPredictions] = useState(null);
+      const [predictionsLoading, setPredictionsLoading] = useState(false);
+      
+      const feeByBrokerChartRef = useRef(null);
+      const feeByExchangeChartRef = useRef(null);
+      const allocationChartRef = useRef(null);
+      const pnlChartRef = useRef(null);
+      const signalsChartRef = useRef(null);
+      const feeByBrokerChartInstance = useRef(null);
+      const feeByExchangeChartInstance = useRef(null);
+      const allocationChartInstance = useRef(null);
+      const pnlChartInstance = useRef(null);
+      const signalsChartInstance = useRef(null);
+
+      // Render charts when switching to analytics view
+      useEffect(() => {
+        if (mainView === 'analytics') {
+          // Small delay to ensure DOM is ready
+          setTimeout(() => {
+            renderAnalyticsCharts();
+          }, 100);
+        }
+        
+        return () => {
+          // Cleanup charts when leaving analytics view
+          if (feeByBrokerChartInstance.current) feeByBrokerChartInstance.current.destroy();
+          if (feeByExchangeChartInstance.current) feeByExchangeChartInstance.current.destroy();
+          if (allocationChartInstance.current) allocationChartInstance.current.destroy();
+          if (pnlChartInstance.current) pnlChartInstance.current.destroy();
+        };
+      }, [mainView, data, currencyView]);
+
+      const [formData, setFormData] = useState({
+        date: new Date().toISOString().split('T')[0],
+        code: '',
+        index: 'ASX',
+        type: 'buy',
+        volume: '',
+        price: '',
+        fee: '',
+        broker: 'CommSec',
+        buyersName: 'Santhosh',
+        notes: ''
+      });
+
+      useEffect(() => {
+        loadData();
+        loadPredictions();
+      }, []);
+
+      const loadData = () => {
+        setLoading(true);
+        fetch('/api/sheets-sync')
+          .then(res => res.json())
+          .then(result => {
+            setData(result);
+            setLoading(false);
+          })
+          .catch(err => {
+            setError(err.message);
+            setLoading(false);
+          });
+      };
+
+      const loadPredictions = (ticker = null) => {
+        setPredictionsLoading(true);
+        const url = ticker 
+          ? `/api/fetch-predictions?ticker=${ticker}`
+          : '/api/fetch-predictions';
+        
+        fetch(url)
+          .then(res => res.json())
+          .then(result => {
+            setPredictions(result);
+            setPredictionsLoading(false);
+          })
+          .catch(err => {
+            console.error('Error loading predictions:', err);
+            setPredictionsLoading(false);
+          });
+      };
+
+      const showToast = (message, type = 'success') => {
+        setToast({ message, type });
+        setTimeout(() => setToast(null), 4000);
+      };
+
+      const handleAddTransaction = async (e) => {
+        e.preventDefault();
+        setSubmitting(true);
+
+        try {
+          const payload = {
+            ...formData,
+            date: toDDMMYYYY(formData.date),
+            volume: parseNumber(formData.volume),
+            price: parseNumber(formData.price),
+            fee: parseNumber(formData.fee)
+          };
+
+          const response = await fetch('/api/add-transaction', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+
+          const result = await response.json();
+
+          if (response.ok) {
+            showToast('✓ Transaction added successfully!', 'success');
+            setShowAddTransaction(false);
+            setFormData({
+              date: new Date().toISOString().split('T')[0],
+              code: '',
+              index: 'ASX',
+              type: 'buy',
+              volume: '',
+              price: '',
+              fee: '',
+              broker: 'CommSec',
+              buyersName: 'Santhosh',
+              notes: ''
+            });
+            setTimeout(loadData, 1000);
+          } else {
+            showToast('✗ ' + (result.error || 'Failed to add transaction'), 'error');
+          }
+        } catch (err) {
+          showToast('✗ Network error: ' + err.message, 'error');
+        } finally {
+          setSubmitting(false);
+        }
+      };
+
+      const renderAnalyticsCharts = () => {
+        if (!data || !data.transactions) return;
+
+        // Recalculate analytics data for charts
+        const holdings = calculateHoldings();
+        const activeStocks = Object.values(holdings).filter(h => h.remainingVolume > 0);
+        const soldStocks = Object.values(holdings).filter(h => h.remainingVolume === 0 && h.totalVolume > 0);
+
+        // Fee by Broker Chart
+        if (feeByBrokerChartRef.current) {
+          if (feeByBrokerChartInstance.current) {
+            feeByBrokerChartInstance.current.destroy();
+          }
+
+          const feeByBroker = {};
+          data.transactions.forEach(txn => {
+            const fee = parseNumber(txn.fee);
+            const currency = EXCHANGE_CURRENCY[txn.index] || 'AUD';
+            const convertedFee = convertCurrency(fee, currency);
+            feeByBroker[txn.broker] = (feeByBroker[txn.broker] || 0) + convertedFee;
+          });
+
+          const ctx1 = feeByBrokerChartRef.current.getContext('2d');
+          feeByBrokerChartInstance.current = new Chart(ctx1, {
+            type: 'doughnut',
+            data: {
+              labels: Object.keys(feeByBroker),
+              datasets: [{
+                data: Object.values(feeByBroker),
+                backgroundColor: ['#ef4444', '#f97316', '#f59e0b', '#eab308'],
+                borderColor: '#1e293b',
+                borderWidth: 2
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: {
+                  position: 'bottom',
+                  labels: { color: '#e5e7eb', font: { size: 12 } }
+                },
+                tooltip: {
+                  backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                  titleColor: '#e5e7eb',
+                  bodyColor: '#e5e7eb',
+                  callbacks: {
+                    label: (context) => {
+                      const label = context.label || '';
+                      const value = context.parsed || 0;
+                      return `${label}: ${currencyView === 'USD' ? '$' : 'A$'}${formatCurrency(value, 2)}`;
+                    }
+                  }
+                }
+              }
+            }
+          });
+        }
+
+        // Fee by Exchange Chart
+        if (feeByExchangeChartRef.current) {
+          if (feeByExchangeChartInstance.current) {
+            feeByExchangeChartInstance.current.destroy();
+          }
+
+          const feeByExchange = {};
+          data.transactions.forEach(txn => {
+            const fee = parseNumber(txn.fee);
+            const currency = EXCHANGE_CURRENCY[txn.index] || 'AUD';
+            const convertedFee = convertCurrency(fee, currency);
+            feeByExchange[txn.index] = (feeByExchange[txn.index] || 0) + convertedFee;
+          });
+
+          const ctx2 = feeByExchangeChartRef.current.getContext('2d');
+          feeByExchangeChartInstance.current = new Chart(ctx2, {
+            type: 'bar',
+            data: {
+              labels: Object.keys(feeByExchange),
+              datasets: [{
+                label: 'Fees',
+                data: Object.values(feeByExchange),
+                backgroundColor: '#f97316',
+                borderColor: '#fb923c',
+                borderWidth: 1
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { display: false },
+                tooltip: {
+                  backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                  titleColor: '#e5e7eb',
+                  bodyColor: '#e5e7eb',
+                  callbacks: {
+                    label: (context) => {
+                      const value = context.parsed.y || 0;
+                      return `Fees: ${currencyView === 'USD' ? '$' : 'A$'}${formatCurrency(value, 2)}`;
+                    }
+                  }
+                }
+              },
+              scales: {
+                y: {
+                  beginAtZero: true,
+                  ticks: { color: '#9ca3af' },
+                  grid: { color: 'rgba(148, 163, 184, 0.1)' }
+                },
+                x: {
+                  ticks: { color: '#9ca3af' },
+                  grid: { display: false }
+                }
+              }
+            }
+          });
+        }
+
+        // Exchange Allocation Chart (Pie)
+        if (allocationChartRef.current) {
+          if (allocationChartInstance.current) {
+            allocationChartInstance.current.destroy();
+          }
+
+          const exchangeAllocation = {};
+          activeStocks.forEach(stock => {
+            const value = convertCurrency(stock.currentValue, stock.currency);
+            exchangeAllocation[stock.index] = (exchangeAllocation[stock.index] || 0) + value;
+          });
+
+          const ctx3 = allocationChartRef.current.getContext('2d');
+          allocationChartInstance.current = new Chart(ctx3, {
+            type: 'pie',
+            data: {
+              labels: Object.keys(exchangeAllocation),
+              datasets: [{
+                data: Object.values(exchangeAllocation),
+                backgroundColor: ['#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b'],
+                borderColor: '#1e293b',
+                borderWidth: 2
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: {
+                  position: 'bottom',
+                  labels: { color: '#e5e7eb', font: { size: 12 } }
+                },
+                tooltip: {
+                  backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                  titleColor: '#e5e7eb',
+                  bodyColor: '#e5e7eb',
+                  callbacks: {
+                    label: (context) => {
+                      const label = context.label || '';
+                      const value = context.parsed || 0;
+                      const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                      const percentage = ((value / total) * 100).toFixed(1);
+                      return `${label}: ${currencyView === 'USD' ? '$' : 'A$'}${formatCurrency(value, 0)} (${percentage}%)`;
+                    }
+                  }
+                }
+              }
+            }
+          });
+        }
+
+        // P&L by Stock Chart (Bar)
+        if (pnlChartRef.current) {
+          if (pnlChartInstance.current) {
+            pnlChartInstance.current.destroy();
+          }
+
+          const stockPerformance = Object.values(holdings).map(stock => {
+            const pnl = calculatePnL(stock);
+            return {
+              code: stock.code,
+              pnl: convertCurrency(pnl, stock.currency)
+            };
+          }).sort((a, b) => b.pnl - a.pnl).slice(0, 10);
+
+          const ctx4 = pnlChartRef.current.getContext('2d');
+          pnlChartInstance.current = new Chart(ctx4, {
+            type: 'bar',
+            data: {
+              labels: stockPerformance.map(s => s.code),
+              datasets: [{
+                label: 'P&L',
+                data: stockPerformance.map(s => s.pnl),
+                backgroundColor: stockPerformance.map(s => s.pnl >= 0 ? '#10b981' : '#ef4444'),
+                borderColor: stockPerformance.map(s => s.pnl >= 0 ? '#34d399' : '#f87171'),
+                borderWidth: 1
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              indexAxis: 'y',
+              plugins: {
+                legend: { display: false },
+                tooltip: {
+                  backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                  titleColor: '#e5e7eb',
+                  bodyColor: '#e5e7eb',
+                  callbacks: {
+                    label: (context) => {
+                      const value = context.parsed.x || 0;
+                      return `P&L: ${value >= 0 ? '+' : ''}${currencyView === 'USD' ? '$' : 'A$'}${formatCurrency(Math.abs(value), 0)}`;
+                    }
+                  }
+                }
+              },
+              scales: {
+                x: {
+                  ticks: { color: '#9ca3af' },
+                  grid: { color: 'rgba(148, 163, 184, 0.1)' }
+                },
+                y: {
+                  ticks: { color: '#9ca3af', font: { family: 'IBM Plex Mono' } },
+                  grid: { display: false }
+                }
+              }
+            }
+          });
+        }
+      };
+
+      if (loading) {
+        return h('div', { className: 'min-h-screen flex items-center justify-center' },
+          h('div', { className: 'text-center' },
+            h('div', { className: 'inline-block animate-spin rounded-full h-16 w-16 border-4 border-cyan-500 border-t-transparent mb-4' }),
+            h('p', { className: 'text-xl text-gray-300 font-semibold' }, 'Loading portfolio data...'),
+            h('p', { className: 'text-sm text-gray-500 mt-2' }, 'Syncing with Google Sheets')
+          )
+        );
+      }
+
+      if (error) {
+        return h('div', { className: 'min-h-screen flex items-center justify-center p-8' },
+          h('div', { className: 'glass-panel rounded-2xl p-8 max-w-2xl text-center' },
+            h('div', { className: 'text-6xl mb-4' }, '⚠️'),
+            h('h2', { className: 'text-2xl font-bold text-red-400 mb-4' }, 'Connection Error'),
+            h('p', { className: 'text-gray-300 mb-6' }, error),
+            h('button', {
+              onClick: loadData,
+              className: 'px-6 py-3 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg font-semibold transition shadow-lg'
+            }, 'Retry Connection')
+          )
+        );
+      }
+
+      // Calculate holdings with FIFO
+      const calculateHoldings = () => {
+        const holdings = {};
+        const trades = (data.transactions || []).filter(t => t.type === 'buy' || t.type === 'sell');
+        
+        trades.forEach(txn => {
+          const code = txn.code;
+          if (!holdings[code]) {
+            holdings[code] = {
+              code,
+              index: txn.index,
+              currency: EXCHANGE_CURRENCY[txn.index] || 'AUD',
+              purchases: [],
+              sales: [],
+              totalVolume: 0,
+              totalCost: 0
+            };
+          }
+          
+          if (txn.type === 'buy') {
+            const vol = parseNumber(txn.volume);
+            const price = parseNumber(txn.price);
+            const fee = parseNumber(txn.fee);
+            holdings[code].purchases.push({ ...txn, volume: vol, price, fee, date: txn.date });
+            holdings[code].totalVolume += vol;
+            holdings[code].totalCost += (vol * price) + fee;
+          } else if (txn.type === 'sell') {
+            holdings[code].sales.push(txn);
+          }
+        });
+
+        // Calculate remaining volume and average price (FIFO)
+        Object.values(holdings).forEach(holding => {
+          let soldVolume = holding.sales.reduce((sum, sale) => sum + parseNumber(sale.volume), 0);
+          holding.remainingVolume = holding.totalVolume - soldVolume;
+          
+          // FIFO calculation for avg price
+          let tempVolume = soldVolume;
+          let remainingCost = 0;
+          
+          for (let purchase of holding.purchases) {
+            const purchaseVolume = purchase.volume;
+            if (tempVolume >= purchaseVolume) {
+              tempVolume -= purchaseVolume;
+            } else {
+              const remainingFromThis = purchaseVolume - tempVolume;
+              remainingCost += (remainingFromThis * purchase.price) + (purchase.fee * (remainingFromThis / purchaseVolume));
+              tempVolume = 0;
+            }
+          }
+          
+          holding.avgPrice = holding.remainingVolume > 0 ? remainingCost / holding.remainingVolume : 0;
+          holding.currentValue = holding.remainingVolume * holding.avgPrice;
+        });
+
+        return holdings;
+      };
+
+      const convertCurrency = (amount, fromCurrency) => {
+        if (currencyView === fromCurrency) return amount;
+        if (currencyView === 'AUD' && fromCurrency === 'USD') return amount * FOREX_RATE;
+        if (currencyView === 'USD' && fromCurrency === 'AUD') return amount / FOREX_RATE;
+        return amount;
+      };
+
+      const holdings = calculateHoldings();
+      const activeStocks = Object.values(holdings)
+        .filter(h => h.remainingVolume > 0)
+        .filter(h => filterExchange === 'ALL' || h.index === filterExchange)
+        .sort((a, b) => b.currentValue - a.currentValue);
+      
+      const soldStocks = Object.values(holdings).filter(h => h.remainingVolume === 0 && h.totalVolume > 0);
+      const exchanges = ['ALL', ...new Set(Object.values(holdings).map(s => s.index))].sort();
+
+      const totalPortfolioValue = activeStocks.reduce((sum, stock) => 
+        sum + convertCurrency(stock.currentValue, stock.currency), 0
+      );
+
+      const totalRealizedPnL = soldStocks.reduce((sum, stock) => 
+        sum + convertCurrency(calculatePnL(stock), stock.currency), 0
+      );
+
+      // ANALYTICS CALCULATIONS (with safety checks)
+      let stockPerformance = [];
+      let topGainers = [];
+      let topLosers = [];
+      let exchangeAllocation = {};
+      let feeByBroker = {};
+      let feeByExchange = {};
+      let totalFees = 0;
+      let tradingByMonth = {};
+      let last6Months = [];
+      let winRate = 0;
+      let closedPositions = 0;
+      let profitablePositions = 0;
+      let avgHoldTime = 0;
+      let mostTraded = [];
+
+      try {
+        stockPerformance = Object.values(holdings).map(stock => {
+          const pnl = calculatePnL(stock);
+          const convertedPnL = convertCurrency(pnl, stock.currency);
+          const totalInvested = convertCurrency(stock.currentValue, stock.currency);
+          const returnPct = totalInvested > 0 ? (convertedPnL / totalInvested) * 100 : 0;
+          return {
+            code: stock.code,
+            pnl: convertedPnL,
+            invested: totalInvested,
+            returnPct,
+            trades: stock.purchases.length + stock.sales.length,
+            status: stock.remainingVolume > 0 ? 'active' : 'closed'
+          };
+        }).sort((a, b) => b.pnl - a.pnl);
+
+        topGainers = stockPerformance.filter(s => s.pnl > 0).slice(0, 5);
+        topLosers = stockPerformance.filter(s => s.pnl < 0).slice(-5).reverse();
+
+        activeStocks.forEach(stock => {
+          const value = convertCurrency(stock.currentValue, stock.currency);
+          exchangeAllocation[stock.index] = (exchangeAllocation[stock.index] || 0) + value;
+        });
+
+        data.transactions.forEach(txn => {
+          const fee = parseNumber(txn.fee);
+          const currency = EXCHANGE_CURRENCY[txn.index] || 'AUD';
+          const convertedFee = convertCurrency(fee, currency);
+          feeByBroker[txn.broker] = (feeByBroker[txn.broker] || 0) + convertedFee;
+          feeByExchange[txn.index] = (feeByExchange[txn.index] || 0) + convertedFee;
+        });
+
+        totalFees = Object.values(feeByBroker).reduce((sum, val) => sum + val, 0);
+
+        data.transactions.forEach(txn => {
+          const [day, month, year] = txn.date.split('/');
+          const monthKey = `${year}-${month.padStart(2, '0')}`;
+          tradingByMonth[monthKey] = (tradingByMonth[monthKey] || 0) + 1;
+        });
+
+        const sortedMonths = Object.keys(tradingByMonth).sort();
+        last6Months = sortedMonths.slice(-6);
+
+        closedPositions = soldStocks.length;
+        profitablePositions = soldStocks.filter(s => calculatePnL(s) > 0).length;
+        winRate = closedPositions > 0 ? (profitablePositions / closedPositions) * 100 : 0;
+
+        const holdTimes = soldStocks.map(stock => {
+          if (stock.purchases.length === 0 || stock.sales.length === 0) return 0;
+          const firstBuy = new Date(toYYYYMMDD(stock.purchases[0].date));
+          const lastSell = new Date(toYYYYMMDD(stock.sales[stock.sales.length - 1].date));
+          return (lastSell - firstBuy) / (1000 * 60 * 60 * 24);
+        }).filter(t => t > 0);
+        
+        avgHoldTime = holdTimes.length > 0 
+          ? holdTimes.reduce((sum, t) => sum + t, 0) / holdTimes.length 
+          : 0;
+
+        const tradeCounts = {};
+        data.transactions.forEach(txn => {
+          tradeCounts[txn.code] = (tradeCounts[txn.code] || 0) + 1;
+        });
+        mostTraded = Object.entries(tradeCounts)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(([code, count]) => ({ code, count }));
+      } catch (err) {
+        console.error('Analytics calculation error:', err);
+      }
+
+      return h('div', { className: 'min-h-screen p-4 md:p-8' },
+        h('div', { className: 'max-w-7xl mx-auto' },
+          // Toast Notification
+          toast && h('div', {
+            className: `success-toast fixed top-8 right-8 z-[100] glass-panel px-6 py-4 rounded-xl shadow-2xl border ${
+              toast.type === 'success' ? 'border-green-500/50' : 'border-red-500/50'
+            }`
+          },
+            h('div', { className: 'flex items-center gap-3' },
+              h('span', { className: 'text-2xl' }, toast.type === 'success' ? '✓' : '✗'),
+              h('span', { className: `font-semibold ${toast.type === 'success' ? 'text-green-400' : 'text-red-400'}` }, toast.message)
+            )
+          ),
+
+          // Header
+          h('div', { className: 'mb-8 animate-slide-in' },
+            h('div', { className: 'flex flex-wrap justify-between items-start mb-4' },
+              h('div', null,
+                h('h1', { className: 'text-5xl md:text-6xl font-bold mb-2' },
+                  h('span', { className: 'bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 bg-clip-text text-transparent' }, 
+                    'Trading Command Center'
+                  )
+                ),
+                h('p', { className: 'text-gray-400 text-lg' }, 
+                  `${activeStocks.length} active positions · ${exchanges.length - 1} exchanges · ${data.transactions.length} total transactions`
+                )
+              ),
+              h('button', {
+                onClick: () => setShowAddTransaction(true),
+                className: 'px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white rounded-xl font-bold shadow-lg transition flex items-center gap-2'
+              },
+                h('span', { className: 'text-xl' }, '+'),
+                'Add Transaction'
+              )
+            ),
+            h('div', { className: 'flex flex-wrap gap-4 items-center' },
+              h('div', { className: 'flex gap-2 mr-4' },
+                h('button', {
+                  onClick: () => setMainView('portfolio'),
+                  className: `px-5 py-2 rounded-lg font-bold transition ${mainView === 'portfolio' ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg' : 'bg-slate-800/50 text-gray-400 hover:text-white hover:bg-slate-700'}`
+                }, '📊 Portfolio'),
+                h('button', {
+                  onClick: () => setMainView('analytics'),
+                  className: `px-5 py-2 rounded-lg font-bold transition ${mainView === 'analytics' ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg' : 'bg-slate-800/50 text-gray-400 hover:text-white hover:bg-slate-700'}`
+                }, '📈 Analytics'),
+                h('button', {
+                  onClick: () => {
+                    setMainView('signals');
+                    if (!predictions) loadPredictions();
+                  },
+                  className: `px-5 py-2 rounded-lg font-bold transition ${mainView === 'signals' ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg' : 'bg-slate-800/50 text-gray-400 hover:text-white hover:bg-slate-700'}`
+                }, '🎯 Trading Signals')
+              ),
+              h('div', { className: 'flex gap-2' },
+                h('button', {
+                  onClick: () => setCurrencyView('AUD'),
+                  className: `px-4 py-2 rounded-lg font-semibold transition ${currencyView === 'AUD' ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg' : 'bg-slate-800/50 text-gray-400 hover:text-white hover:bg-slate-700'}`
+                }, 'A$ AUD'),
+                h('button', {
+                  onClick: () => setCurrencyView('USD'),
+                  className: `px-4 py-2 rounded-lg font-semibold transition ${currencyView === 'USD' ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg' : 'bg-slate-800/50 text-gray-400 hover:text-white hover:bg-slate-700'}`
+                }, '$ USD')
+              )
+            )
+          ),
+
+          // Summary Cards
+          h('div', { className: 'grid grid-cols-1 md:grid-cols-3 gap-6 mb-8' },
+            h('div', { className: 'glass-panel rounded-2xl p-6 hover-lift animate-slide-in border border-cyan-500/20' },
+              h('div', { className: 'text-xs font-bold text-gray-400 mb-2 uppercase tracking-wider' }, '💼 Portfolio Value'),
+              h('div', { className: 'text-4xl font-bold font-mono text-white mb-2' }, 
+                `${currencyView === 'USD' ? '$' : 'A$'}${formatCurrency(totalPortfolioValue, 0)}`
+              ),
+              h('div', { className: 'text-sm text-gray-500' }, 'Current holdings')
+            ),
+            h('div', { className: 'glass-panel rounded-2xl p-6 hover-lift animate-slide-in border border-green-500/20' },
+              h('div', { className: 'text-xs font-bold text-gray-400 mb-2 uppercase tracking-wider' }, '📊 Realized P&L'),
+              h('div', { className: `text-4xl font-bold font-mono mb-2 ${totalRealizedPnL >= 0 ? 'profit' : 'loss'}` }, 
+                `${totalRealizedPnL >= 0 ? '+' : ''}${currencyView === 'USD' ? '$' : 'A$'}${formatCurrency(Math.abs(totalRealizedPnL), 0)}`
+              ),
+              h('div', { className: 'text-sm text-gray-500' }, `${soldStocks.length} closed positions`)
+            ),
+            h('div', { className: 'glass-panel rounded-2xl p-6 hover-lift animate-slide-in border border-blue-500/20' },
+              h('div', { className: 'text-xs font-bold text-gray-400 mb-2 uppercase tracking-wider' }, '🎯 Active Positions'),
+              h('div', { className: 'text-4xl font-bold font-mono text-cyan-400 mb-2' }, activeStocks.length),
+              h('div', { className: 'text-sm text-gray-500' }, 'Open holdings')
+            )
+          ),
+
+          // Portfolio View
+          mainView === 'portfolio' && h('div', null,
+            // Exchange Filter
+            h('div', { className: 'mb-6 flex gap-2 overflow-x-auto pb-2' },
+              ...exchanges.map(ex =>
+                h('button', {
+                  key: ex,
+                  onClick: () => setFilterExchange(ex),
+                  className: `px-5 py-2.5 rounded-lg font-bold whitespace-nowrap transition shadow-md ${
+                    filterExchange === ex 
+                      ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white scale-105' 
+                      : 'glass-panel text-gray-400 hover:text-white hover:scale-105'
+                  }`
+                }, ex)
+              )
+            ),
+
+            // Portfolio Breakdown Tables
+            h('div', { className: 'grid grid-cols-1 xl:grid-cols-2 gap-6 mb-8' },
+              // ASX Holdings
+              (() => {
+                const axsStocks = activeStocks
+                  .filter(s => s.index === 'ASX')
+                  .map(stock => {
+                    // Calculate cost basis for REMAINING shares only (FIFO)
+                    let totalCost = 0;
+                    let remainingVolume = stock.remainingVolume;
+                    
+                    for (const purchase of stock.purchases) {
+                      if (remainingVolume <= 0) break;
+                      
+                      const volumeFromThisPurchase = Math.min(remainingVolume, purchase.volume);
+                      const costFromThisPurchase = (volumeFromThisPurchase * purchase.price) + 
+                        (purchase.fee * (volumeFromThisPurchase / purchase.volume));
+                      
+                      totalCost += costFromThisPurchase;
+                      remainingVolume -= volumeFromThisPurchase;
+                    }
+                    
+                    return { ...stock, totalCost };
+                  })
+                  .sort((a, b) => b.totalCost - a.totalCost);
+
+                const axsTotal = axsStocks.reduce((sum, s) => sum + convertCurrency(s.currentValue, s.currency), 0);
+
+                return h('div', { className: 'glass-panel rounded-xl p-6 border border-green-500/20' },
+                  h('div', { className: 'flex justify-between items-center mb-4' },
+                    h('h3', { className: 'text-xl font-bold text-white flex items-center gap-2' },
+                      h('span', null, '🇦🇺'),
+                      'ASX Holdings'
+                    ),
+                    h('div', { className: 'text-right' },
+                      h('div', { className: 'text-xs text-gray-400' }, 'Total Value'),
+                      h('div', { className: 'text-lg font-bold font-mono text-green-400' }, 
+                        `A$${formatCurrency(axsTotal, 0)}`
+                      )
+                    )
+                  ),
+                  h('div', { className: 'overflow-x-auto' },
+                    axsStocks.length > 0 ? h('table', { className: 'w-full text-sm' },
+                      h('thead', null,
+                        h('tr', { className: 'border-b border-gray-700' },
+                          h('th', { className: 'text-left py-2 px-2 text-gray-400 font-semibold text-xs' }, 'Stock'),
+                          h('th', { className: 'text-right py-2 px-2 text-gray-400 font-semibold text-xs' }, 'Volume'),
+                          h('th', { className: 'text-right py-2 px-2 text-gray-400 font-semibold text-xs' }, 'Avg Price'),
+                          h('th', { className: 'text-right py-2 px-2 text-gray-400 font-semibold text-xs' }, 'Total Cost'),
+                          h('th', { className: 'text-right py-2 px-2 text-gray-400 font-semibold text-xs' }, 'Curr Value')
+                        )
+                      ),
+                      h('tbody', null,
+                        ...axsStocks.map((stock, idx) => {
+                          const totalCostConverted = convertCurrency(stock.totalCost, stock.currency);
+                          const currentValueConverted = convertCurrency(stock.currentValue, stock.currency);
+                          const pnl = currentValueConverted - totalCostConverted;
+                          const pnlPct = totalCostConverted > 0 ? (pnl / totalCostConverted) * 100 : 0;
+
+                          return h('tr', { 
+                            key: idx, 
+                            className: 'border-b border-gray-800 hover:bg-slate-800/30 transition cursor-pointer',
+                            onClick: () => {
+                              setSelectedStock(stock);
+                              setShowModal(true);
+                              setActiveTab('transactions');
+                            }
+                          },
+                            h('td', { className: 'py-3 px-2' },
+                              h('div', { className: 'font-mono font-bold text-cyan-400' }, stock.code),
+                              h('div', { className: `text-xs ${pnl >= 0 ? 'text-green-400' : 'text-red-400'}` }, 
+                                `${pnl >= 0 ? '+' : ''}${formatCurrency(pnlPct, 1)}%`
+                              )
+                            ),
+                            h('td', { className: 'py-3 px-2 text-right font-mono text-white' }, 
+                              formatCurrency(stock.remainingVolume, 0)
+                            ),
+                            h('td', { className: 'py-3 px-2 text-right font-mono text-gray-300' }, 
+                              `A$${formatCurrency(stock.avgPrice, 2)}`
+                            ),
+                            h('td', { className: 'py-3 px-2 text-right font-mono text-orange-400' }, 
+                              `A$${formatCurrency(totalCostConverted, 0)}`
+                            ),
+                            h('td', { className: 'py-3 px-2 text-right' },
+                              h('div', { className: 'font-mono font-bold text-white' }, 
+                                `A$${formatCurrency(currentValueConverted, 0)}`
+                              ),
+                              h('div', { className: `text-xs font-mono ${pnl >= 0 ? 'text-green-400' : 'text-red-400'}` }, 
+                                `${pnl >= 0 ? '+' : ''}A$${formatCurrency(Math.abs(pnl), 0)}`
+                              )
+                            )
+                          );
+                        })
+                      )
+                    ) : h('p', { className: 'text-gray-500 text-center py-8' }, 'No ASX holdings')
+                  )
+                );
+              })(),
+
+              // Non-ASX Holdings
+              (() => {
+                const nonAxsStocks = activeStocks
+                  .filter(s => s.index !== 'ASX')
+                  .map(stock => {
+                    // Calculate cost basis for REMAINING shares only (FIFO)
+                    let totalCost = 0;
+                    let remainingVolume = stock.remainingVolume;
+                    
+                    for (const purchase of stock.purchases) {
+                      if (remainingVolume <= 0) break;
+                      
+                      const volumeFromThisPurchase = Math.min(remainingVolume, purchase.volume);
+                      const costFromThisPurchase = (volumeFromThisPurchase * purchase.price) + 
+                        (purchase.fee * (volumeFromThisPurchase / purchase.volume));
+                      
+                      totalCost += costFromThisPurchase;
+                      remainingVolume -= volumeFromThisPurchase;
+                    }
+                    
+                    return { ...stock, totalCost };
+                  })
+                  .sort((a, b) => b.totalCost - a.totalCost);
+
+                const nonAxsTotal = nonAxsStocks.reduce((sum, s) => sum + convertCurrency(s.currentValue, s.currency), 0);
+
+                return h('div', { className: 'glass-panel rounded-xl p-6 border border-blue-500/20' },
+                  h('div', { className: 'flex justify-between items-center mb-4' },
+                    h('h3', { className: 'text-xl font-bold text-white flex items-center gap-2' },
+                      h('span', null, '🌎'),
+                      'US Markets'
+                    ),
+                    h('div', { className: 'text-right' },
+                      h('div', { className: 'text-xs text-gray-400' }, 'Total Value'),
+                      h('div', { className: 'text-lg font-bold font-mono text-blue-400' }, 
+                        `${currencyView === 'USD' ? '$' : 'A$'}${formatCurrency(nonAxsTotal, 0)}`
+                      )
+                    )
+                  ),
+                  h('div', { className: 'overflow-x-auto' },
+                    nonAxsStocks.length > 0 ? h('table', { className: 'w-full text-sm' },
+                      h('thead', null,
+                        h('tr', { className: 'border-b border-gray-700' },
+                          h('th', { className: 'text-left py-2 px-2 text-gray-400 font-semibold text-xs' }, 'Stock'),
+                          h('th', { className: 'text-right py-2 px-2 text-gray-400 font-semibold text-xs' }, 'Volume'),
+                          h('th', { className: 'text-right py-2 px-2 text-gray-400 font-semibold text-xs' }, 'Avg Price'),
+                          h('th', { className: 'text-right py-2 px-2 text-gray-400 font-semibold text-xs' }, 'Total Cost'),
+                          h('th', { className: 'text-right py-2 px-2 text-gray-400 font-semibold text-xs' }, 'Curr Value')
+                        )
+                      ),
+                      h('tbody', null,
+                        ...nonAxsStocks.map((stock, idx) => {
+                          const totalCostConverted = convertCurrency(stock.totalCost, stock.currency);
+                          const currentValueConverted = convertCurrency(stock.currentValue, stock.currency);
+                          const pnl = currentValueConverted - totalCostConverted;
+                          const pnlPct = totalCostConverted > 0 ? (pnl / totalCostConverted) * 100 : 0;
+
+                          return h('tr', { 
+                            key: idx, 
+                            className: 'border-b border-gray-800 hover:bg-slate-800/30 transition cursor-pointer',
+                            onClick: () => {
+                              setSelectedStock(stock);
+                              setShowModal(true);
+                              setActiveTab('transactions');
+                            }
+                          },
+                            h('td', { className: 'py-3 px-2' },
+                              h('div', { className: 'font-mono font-bold text-cyan-400' }, stock.code),
+                              h('div', { className: 'text-xs text-gray-400' }, stock.index),
+                              h('div', { className: `text-xs ${pnl >= 0 ? 'text-green-400' : 'text-red-400'}` }, 
+                                `${pnl >= 0 ? '+' : ''}${formatCurrency(pnlPct, 1)}%`
+                              )
+                            ),
+                            h('td', { className: 'py-3 px-2 text-right font-mono text-white' }, 
+                              formatCurrency(stock.remainingVolume, 0)
+                            ),
+                            h('td', { className: 'py-3 px-2 text-right font-mono text-gray-300' }, 
+                              `$${formatCurrency(stock.avgPrice, 2)}`
+                            ),
+                            h('td', { className: 'py-3 px-2 text-right font-mono text-orange-400' }, 
+                              `${currencyView === 'USD' ? '$' : 'A$'}${formatCurrency(totalCostConverted, 0)}`
+                            ),
+                            h('td', { className: 'py-3 px-2 text-right' },
+                              h('div', { className: 'font-mono font-bold text-white' }, 
+                                `${currencyView === 'USD' ? '$' : 'A$'}${formatCurrency(currentValueConverted, 0)}`
+                              ),
+                              h('div', { className: `text-xs font-mono ${pnl >= 0 ? 'text-green-400' : 'text-red-400'}` }, 
+                                `${pnl >= 0 ? '+' : ''}${currencyView === 'USD' ? '$' : 'A$'}${formatCurrency(Math.abs(pnl), 0)}`
+                              )
+                            )
+                          );
+                        })
+                      )
+                    ) : h('p', { className: 'text-gray-500 text-center py-8' }, 'No US holdings')
+                  )
+                );
+              })()
+            ),
+
+            // Holdings Grid
+            h('div', { className: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8' },
+              ...activeStocks.map((stock, idx) =>
+                h('div', {
+                  key: stock.code,
+                  onClick: () => {
+                    console.log('Clicked stock:', stock);
+                    setSelectedStock(stock);
+                    setShowModal(true);
+                    setActiveTab('transactions');
+                  },
+                  className: 'glass-panel rounded-2xl p-6 hover-lift cursor-pointer animate-slide-in border border-cyan-500/10 hover:border-cyan-500/30',
+                  style: { animationDelay: `${idx * 0.05}s` }
+                },
+                  h('div', { className: 'flex justify-between items-start mb-4' },
+                    h('div', null,
+                      h('div', { className: 'text-3xl font-bold font-mono text-cyan-400 mb-1' }, stock.code),
+                      h('div', { className: 'text-sm text-gray-400 font-semibold' }, stock.index)
+                    ),
+                    h('div', { className: 'px-3 py-1.5 bg-gradient-to-r from-slate-700 to-slate-600 rounded-full text-xs font-bold text-gray-200 shadow-md' },
+                      `${formatCurrency(stock.remainingVolume, 0)}`
+                    )
+                  ),
+                  h('div', { className: 'space-y-2.5' },
+                    h('div', { className: 'flex justify-between items-center' },
+                      h('span', { className: 'text-sm text-gray-400 font-medium' }, 'Avg Price'),
+                      h('span', { className: 'text-sm font-mono text-white font-semibold' }, 
+                        `${stock.currency === 'USD' ? '$' : 'A$'}${formatCurrency(stock.avgPrice)}`
+                      )
+                    ),
+                    h('div', { className: 'flex justify-between items-center' },
+                      h('span', { className: 'text-sm text-gray-400 font-medium' }, 'Value'),
+                      h('span', { className: 'text-base font-mono font-bold text-white' }, 
+                        `${stock.currency === 'USD' ? '$' : 'A$'}${formatCurrency(stock.currentValue, 0)}`
+                      )
+                    ),
+                    h('div', { className: 'flex justify-between items-center' },
+                      h('span', { className: 'text-sm text-gray-400 font-medium' }, 'Activity'),
+                      h('span', { className: 'text-sm text-cyan-400 font-semibold' }, 
+                        `${stock.purchases.length}B · ${stock.sales.length}S`
+                      )
+                    )
+                  ),
+                  h('div', { className: 'mt-4 pt-4 border-t border-gray-700/50 text-sm text-gray-500 text-center font-medium' },
+                    'Click for details →'
+                  )
+                )
+              )
+            )
+          ),
+
+          // Analytics View
+          mainView === 'analytics' && h('div', { className: 'space-y-8' },
+            // Performance Overview Cards
+            h('div', { className: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4' },
+              h('div', { className: 'glass-panel rounded-xl p-5 border border-purple-500/20 hover-lift' },
+                h('div', { className: 'text-xs text-gray-400 mb-1 uppercase font-bold' }, 'Win Rate'),
+                h('div', { className: 'text-3xl font-bold font-mono text-purple-400' }, `${formatCurrency(winRate, 1)}%`),
+                h('div', { className: 'text-xs text-gray-500 mt-1' }, `${profitablePositions}/${closedPositions} profitable`)
+              ),
+              h('div', { className: 'glass-panel rounded-xl p-5 border border-orange-500/20 hover-lift' },
+                h('div', { className: 'text-xs text-gray-400 mb-1 uppercase font-bold' }, 'Avg Hold Time'),
+                h('div', { className: 'text-3xl font-bold font-mono text-orange-400' }, `${Math.round(avgHoldTime)}d`),
+                h('div', { className: 'text-xs text-gray-500 mt-1' }, 'Days per position')
+              ),
+              h('div', { className: 'glass-panel rounded-xl p-5 border border-red-500/20 hover-lift' },
+                h('div', { className: 'text-xs text-gray-400 mb-1 uppercase font-bold' }, 'Total Fees'),
+                h('div', { className: 'text-3xl font-bold font-mono text-red-400' }, 
+                  `${currencyView === 'USD' ? '$' : 'A$'}${formatCurrency(totalFees, 0)}`
+                ),
+                h('div', { className: 'text-xs text-gray-500 mt-1' }, 'All brokers')
+              ),
+              h('div', { className: 'glass-panel rounded-xl p-5 border border-yellow-500/20 hover-lift' },
+                h('div', { className: 'text-xs text-gray-400 mb-1 uppercase font-bold' }, 'Total Trades'),
+                h('div', { className: 'text-3xl font-bold font-mono text-yellow-400' }, data.transactions.length),
+                h('div', { className: 'text-xs text-gray-500 mt-1' }, 'All time')
+              )
+            ),
+
+            // Top Gainers & Losers
+            h('div', { className: 'grid grid-cols-1 lg:grid-cols-2 gap-6' },
+              h('div', { className: 'glass-panel rounded-xl p-6 border border-green-500/20' },
+                h('h3', { className: 'text-xl font-bold text-white mb-4 flex items-center gap-2' },
+                  h('span', null, '🏆'),
+                  'Top Gainers'
+                ),
+                h('div', { className: 'space-y-3' },
+                  topGainers.length > 0 ? topGainers.map((stock, idx) =>
+                    h('div', { key: idx, className: 'flex justify-between items-center p-3 bg-slate-800/50 rounded-lg hover-lift' },
+                      h('div', null,
+                        h('div', { className: 'font-mono font-bold text-white' }, stock.code),
+                        h('div', { className: 'text-xs text-gray-400' }, `${stock.trades} trades`)
+                      ),
+                      h('div', { className: 'text-right' },
+                        h('div', { className: 'font-mono font-bold text-green-400' }, 
+                          `+${currencyView === 'USD' ? '$' : 'A$'}${formatCurrency(stock.pnl, 0)}`
+                        ),
+                        h('div', { className: 'text-xs text-green-400' }, `+${formatCurrency(stock.returnPct, 1)}%`)
+                      )
+                    )
+                  ) : h('div', { className: 'text-gray-500 text-center py-4' }, 'No profitable positions yet')
+                )
+              ),
+              h('div', { className: 'glass-panel rounded-xl p-6 border border-red-500/20' },
+                h('h3', { className: 'text-xl font-bold text-white mb-4 flex items-center gap-2' },
+                  h('span', null, '📉'),
+                  'Top Losers'
+                ),
+                h('div', { className: 'space-y-3' },
+                  topLosers.length > 0 ? topLosers.map((stock, idx) =>
+                    h('div', { key: idx, className: 'flex justify-between items-center p-3 bg-slate-800/50 rounded-lg hover-lift' },
+                      h('div', null,
+                        h('div', { className: 'font-mono font-bold text-white' }, stock.code),
+                        h('div', { className: 'text-xs text-gray-400' }, `${stock.trades} trades`)
+                      ),
+                      h('div', { className: 'text-right' },
+                        h('div', { className: 'font-mono font-bold text-red-400' }, 
+                          `${currencyView === 'USD' ? '$' : 'A$'}${formatCurrency(stock.pnl, 0)}`
+                        ),
+                        h('div', { className: 'text-xs text-red-400' }, `${formatCurrency(stock.returnPct, 1)}%`)
+                      )
+                    )
+                  ) : h('div', { className: 'text-gray-500 text-center py-4' }, 'No losing positions')
+                )
+              )
+            ),
+
+            // Fee Analysis with Charts
+            h('div', { className: 'grid grid-cols-1 lg:grid-cols-2 gap-6' },
+              h('div', { className: 'glass-panel rounded-xl p-6 border border-red-500/20' },
+                h('h3', { className: 'text-xl font-bold text-white mb-4 flex items-center gap-2' },
+                  h('span', null, '💰'),
+                  'Fees by Broker'
+                ),
+                h('div', { style: { height: '300px' } },
+                  h('canvas', { ref: feeByBrokerChartRef })
+                )
+              ),
+              h('div', { className: 'glass-panel rounded-xl p-6 border border-orange-500/20' },
+                h('h3', { className: 'text-xl font-bold text-white mb-4 flex items-center gap-2' },
+                  h('span', null, '📊'),
+                  'Fees by Exchange'
+                ),
+                h('div', { style: { height: '300px' } },
+                  h('canvas', { ref: feeByExchangeChartRef })
+                )
+              )
+            ),
+
+            // Portfolio Allocation Chart
+            h('div', { className: 'glass-panel rounded-xl p-6 border border-cyan-500/20' },
+              h('h3', { className: 'text-xl font-bold text-white mb-4 flex items-center gap-2' },
+                h('span', null, '🌐'),
+                'Portfolio Allocation by Exchange'
+              ),
+              h('div', { style: { height: '350px' } },
+                h('canvas', { ref: allocationChartRef })
+              )
+            ),
+
+            // P&L by Stock Chart
+            h('div', { className: 'glass-panel rounded-xl p-6 border border-green-500/20' },
+              h('h3', { className: 'text-xl font-bold text-white mb-4 flex items-center gap-2' },
+                h('span', null, '📊'),
+                'Top 10 Stocks by P&L'
+              ),
+              h('div', { style: { height: '400px' } },
+                h('canvas', { ref: pnlChartRef })
+              )
+            ),
+
+            // Most Traded Stocks
+            h('div', { className: 'glass-panel rounded-xl p-6 border border-blue-500/20' },
+              h('h3', { className: 'text-xl font-bold text-white mb-4 flex items-center gap-2' },
+                h('span', null, '🔥'),
+                'Most Traded Stocks'
+              ),
+              h('div', { className: 'grid grid-cols-2 md:grid-cols-5 gap-4' },
+                ...mostTraded.map((item, idx) =>
+                  h('div', { key: idx, className: 'text-center p-4 bg-slate-800/50 rounded-lg hover-lift' },
+                    h('div', { className: 'text-3xl font-bold font-mono text-blue-400 mb-1' }, item.count),
+                    h('div', { className: 'text-sm font-bold text-white' }, item.code),
+                    h('div', { className: 'text-xs text-gray-400' }, 'transactions')
+                  )
+                )
+              )
+            ),
+
+            // Trading Activity
+            h('div', { className: 'glass-panel rounded-xl p-6 border border-purple-500/20' },
+              h('h3', { className: 'text-xl font-bold text-white mb-4 flex items-center gap-2' },
+                h('span', null, '📅'),
+                'Trading Activity (Last 6 Months)'
+              ),
+              h('div', { className: 'grid grid-cols-3 md:grid-cols-6 gap-4' },
+                last6Months.length > 0 ? last6Months.map(month => {
+                  const [year, monthNum] = month.split('-');
+                  const monthName = new Date(year, parseInt(monthNum) - 1).toLocaleString('en-US', { month: 'short' });
+                  return h('div', { key: month, className: 'text-center p-4 bg-slate-800/50 rounded-lg hover-lift' },
+                    h('div', { className: 'text-2xl font-bold font-mono text-purple-400 mb-1' }, tradingByMonth[month] || 0),
+                    h('div', { className: 'text-xs text-gray-400' }, `${monthName} '${year.slice(2)}`)
+                  );
+                }) : h('div', { className: 'text-gray-500 text-center py-4' }, 'No trading history yet')
+              )
+            ),
+
+            // Complete Performance Table
+            h('div', { className: 'glass-panel rounded-xl p-6 border border-cyan-500/20' },
+              h('h3', { className: 'text-xl font-bold text-white mb-4 flex items-center gap-2' },
+                h('span', null, '📋'),
+                'Complete Performance Report'
+              ),
+              h('div', { className: 'overflow-x-auto' },
+                h('table', { className: 'w-full' },
+                  h('thead', null,
+                    h('tr', { className: 'border-b border-gray-700' },
+                      h('th', { className: 'text-left py-3 px-4 text-gray-400 font-semibold text-sm' }, 'Stock'),
+                      h('th', { className: 'text-right py-3 px-4 text-gray-400 font-semibold text-sm' }, 'P&L'),
+                      h('th', { className: 'text-right py-3 px-4 text-gray-400 font-semibold text-sm' }, 'Return %'),
+                      h('th', { className: 'text-right py-3 px-4 text-gray-400 font-semibold text-sm' }, 'Trades'),
+                      h('th', { className: 'text-center py-3 px-4 text-gray-400 font-semibold text-sm' }, 'Status')
+                    )
+                  ),
+                  h('tbody', null,
+                    ...stockPerformance.map((stock, idx) =>
+                      h('tr', { key: idx, className: 'border-b border-gray-800 hover:bg-slate-800/30 transition' },
+                        h('td', { className: 'py-3 px-4 font-mono font-bold text-white' }, stock.code),
+                        h('td', { className: `py-3 px-4 text-right font-mono font-bold ${stock.pnl >= 0 ? 'text-green-400' : 'text-red-400'}` }, 
+                          `${stock.pnl >= 0 ? '+' : ''}${currencyView === 'USD' ? '$' : 'A$'}${formatCurrency(Math.abs(stock.pnl), 0)}`
+                        ),
+                        h('td', { className: `py-3 px-4 text-right font-mono ${stock.returnPct >= 0 ? 'text-green-400' : 'text-red-400'}` }, 
+                          `${stock.returnPct >= 0 ? '+' : ''}${formatCurrency(stock.returnPct, 1)}%`
+                        ),
+                        h('td', { className: 'py-3 px-4 text-right text-gray-300' }, stock.trades),
+                        h('td', { className: 'py-3 px-4 text-center' },
+                          h('span', { 
+                            className: `px-3 py-1 rounded-full text-xs font-bold ${
+                              stock.status === 'active' 
+                                ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' 
+                                : 'bg-gray-700 text-gray-400'
+                            }`
+                          }, stock.status)
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          ),
+
+          // TRADING SIGNALS VIEW
+          mainView === 'signals' && h('div', { className: 'space-y-6' },
+            predictionsLoading ? h('div', { className: 'text-center py-12' },
+              h('div', { className: 'inline-block animate-spin rounded-full h-12 w-12 border-4 border-cyan-500 border-t-transparent mb-4' }),
+              h('p', { className: 'text-gray-400' }, 'Loading trading signals...')
+            ) : !predictions ? h('div', { className: 'glass-panel rounded-xl p-8 text-center' },
+              h('p', { className: 'text-gray-400 mb-4' }, 'Click a stock to view signals'),
+              h('button', {
+                onClick: loadPredictions,
+                className: 'px-6 py-3 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg font-semibold'
+              }, 'Load All Signals')
+            ) : h('div', null,
+              // Stock selector
+              h('div', { className: 'glass-panel rounded-xl p-6 border border-cyan-500/20' },
+                h('h3', { className: 'text-xl font-bold text-white mb-4' }, '📌 Select Stock'),
+                h('div', { className: 'flex flex-wrap gap-2' },
+                  predictions.tickers && predictions.tickers.map(ticker =>
+                    h('button', {
+                      key: ticker,
+                      onClick: () => {
+                        setSelectedTicker(ticker);
+                        loadPredictions(ticker);
+                      },
+                      className: `px-4 py-2 rounded-lg font-mono font-bold transition ${
+                        selectedTicker === ticker
+                          ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg'
+                          : 'glass-panel text-gray-400 hover:text-white hover:bg-slate-700'
+                      }`
+                    }, ticker)
+                  )
+                )
+              ),
+
+              // Chart and data display
+              selectedTicker && predictions.predictions && predictions.predictions.length > 0 && h('div', null,
+                // Summary stats
+                h('div', { className: 'grid grid-cols-1 md:grid-cols-4 gap-4 mb-6' },
+                  (() => {
+                    const tickerData = predictions.predictions.filter(p => p.ticker === selectedTicker);
+                    const latest = tickerData[tickerData.length - 1];
+                    const accuracy = tickerData.filter(p => 
+                      p.highODE !== null && p.lowODE !== null &&
+                      p.lowODE >= p.predLow * 0.98 && p.highODE <= p.predHigh * 1.02
+                    ).length / tickerData.filter(p => p.highODE !== null).length * 100;
+
+                    return [
+                      h('div', { key: 'latest', className: 'glass-panel rounded-xl p-4 border border-purple-500/20' },
+                        h('div', { className: 'text-xs text-gray-400 mb-1 uppercase font-bold' }, 'Latest Close'),
+                        h('div', { className: 'text-2xl font-bold font-mono text-purple-400' }, 
+                          latest && latest.closeODE ? `$${latest.closeODE.toFixed(2)}` : 'N/A'
+                        ),
+                        h('div', { className: 'text-xs text-gray-500 mt-1' }, latest ? latest.date : '')
+                      ),
+                      h('div', { key: 'high', className: 'glass-panel rounded-xl p-4 border border-green-500/20' },
+                        h('div', { className: 'text-xs text-gray-400 mb-1 uppercase font-bold' }, 'Pred High'),
+                        h('div', { className: 'text-2xl font-bold font-mono text-green-400' }, 
+                          latest && latest.predHigh ? `$${latest.predHigh.toFixed(2)}` : 'N/A'
+                        ),
+                        h('div', { className: 'text-xs text-gray-500 mt-1' }, 'Target')
+                      ),
+                      h('div', { key: 'low', className: 'glass-panel rounded-xl p-4 border border-red-500/20' },
+                        h('div', { className: 'text-xs text-gray-400 mb-1 uppercase font-bold' }, 'Pred Low'),
+                        h('div', { className: 'text-2xl font-bold font-mono text-red-400' }, 
+                          latest && latest.predLow ? `$${latest.predLow.toFixed(2)}` : 'N/A'
+                        ),
+                        h('div', { className: 'text-xs text-gray-500 mt-1' }, 'Support')
+                      ),
+                      h('div', { key: 'accuracy', className: 'glass-panel rounded-xl p-4 border border-cyan-500/20' },
+                        h('div', { className: 'text-xs text-gray-400 mb-1 uppercase font-bold' }, 'Accuracy'),
+                        h('div', { className: 'text-2xl font-bold font-mono text-cyan-400' }, 
+                          isNaN(accuracy) ? 'N/A' : `${accuracy.toFixed(0)}%`
+                        ),
+                        h('div', { className: 'text-xs text-gray-500 mt-1' }, 'Historical')
+                      )
+                    ];
+                  })()
+                ),
+
+                // Interactive chart
+                h('div', { className: 'glass-panel rounded-xl p-6 border border-cyan-500/20 mb-6' },
+                  h('h3', { className: 'text-xl font-bold text-white mb-4 flex items-center gap-2' },
+                    h('span', null, '📈'),
+                    `${selectedTicker} - Price & Guidance (ODE Data)`
+                  ),
+                  h('div', { style: { height: '500px' } },
+                    (() => {
+                      // Render chart for selected ticker
+                      const tickerData = predictions.predictions
+                        .filter(p => p.ticker === selectedTicker)
+                        .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+                      if (signalsChartInstance.current) {
+                        signalsChartInstance.current.destroy();
+                      }
+
+                      setTimeout(() => {
+                        if (signalsChartRef.current && tickerData.length > 0) {
+                          const ctx = signalsChartRef.current.getContext('2d');
+                          signalsChartInstance.current = new Chart(ctx, {
+                            type: 'line',
+                            data: {
+                              labels: tickerData.map(d => d.date),
+                              datasets: [
+                                {
+                                  label: 'Close (ODE)',
+                                  data: tickerData.map(d => d.closeODE),
+                                  borderColor: '#06b6d4',
+                                  backgroundColor: 'rgba(6, 182, 212, 0.1)',
+                                  borderWidth: 3,
+                                  pointRadius: 4,
+                                  pointHoverRadius: 6,
+                                  tension: 0.1,
+                                  fill: false
+                                },
+                                {
+                                  label: 'High (ODE)',
+                                  data: tickerData.map(d => d.highODE),
+                                  borderColor: '#10b981',
+                                  backgroundColor: 'transparent',
+                                  borderWidth: 1,
+                                  pointRadius: 2,
+                                  borderDash: [3, 3],
+                                  tension: 0.1,
+                                  fill: false
+                                },
+                                {
+                                  label: 'Low (ODE)',
+                                  data: tickerData.map(d => d.lowODE),
+                                  borderColor: '#ef4444',
+                                  backgroundColor: 'transparent',
+                                  borderWidth: 1,
+                                  pointRadius: 2,
+                                  borderDash: [3, 3],
+                                  tension: 0.1,
+                                  fill: false
+                                },
+                                {
+                                  label: 'Predicted High',
+                                  data: tickerData.map(d => d.predHigh),
+                                  borderColor: '#22c55e',
+                                  backgroundColor: 'rgba(34, 197, 94, 0.05)',
+                                  borderWidth: 2,
+                                  pointRadius: 0,
+                                  borderDash: [8, 4],
+                                  tension: 0.3,
+                                  fill: '+1'
+                                },
+                                {
+                                  label: 'Predicted Low',
+                                  data: tickerData.map(d => d.predLow),
+                                  borderColor: '#f87171',
+                                  backgroundColor: 'rgba(248, 113, 113, 0.05)',
+                                  borderWidth: 2,
+                                  pointRadius: 0,
+                                  borderDash: [8, 4],
+                                  tension: 0.3,
+                                  fill: false
+                                },
+                                {
+                                  label: 'Take Profit',
+                                  data: tickerData.map(d => d.takeProfit),
+                                  borderColor: '#84cc16',
+                                  backgroundColor: 'transparent',
+                                  borderWidth: 1,
+                                  pointRadius: 0,
+                                  borderDash: [2, 2],
+                                  tension: 0.3,
+                                  fill: false
+                                },
+                                {
+                                  label: 'Stop Loss',
+                                  data: tickerData.map(d => d.stopLoss),
+                                  borderColor: '#dc2626',
+                                  backgroundColor: 'transparent',
+                                  borderWidth: 1,
+                                  pointRadius: 0,
+                                  borderDash: [2, 2],
+                                  tension: 0.3,
+                                  fill: false
+                                }
+                              ]
+                            },
+                            options: {
+                              responsive: true,
+                              maintainAspectRatio: false,
+                              interaction: {
+                                mode: 'index',
+                                intersect: false
+                              },
+                              plugins: {
+                                legend: {
+                                  position: 'top',
+                                  labels: { 
+                                    color: '#e5e7eb', 
+                                    font: { size: 11, family: 'IBM Plex Mono' },
+                                    usePointStyle: true,
+                                    padding: 15
+                                  }
+                                },
+                                tooltip: {
+                                  backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                                  titleColor: '#e5e7eb',
+                                  bodyColor: '#e5e7eb',
+                                  borderColor: 'rgba(6, 182, 212, 0.5)',
+                                  borderWidth: 1,
+                                  padding: 12,
+                                  displayColors: true,
+                                  callbacks: {
+                                    label: (context) => {
+                                      const label = context.dataset.label || '';
+                                      const value = context.parsed.y;
+                                      return value !== null ? `${label}: $${value.toFixed(2)}` : '';
+                                    }
+                                  }
+                                }
+                              },
+                              scales: {
+                                y: {
+                                  beginAtZero: false,
+                                  ticks: { 
+                                    color: '#9ca3af',
+                                    callback: (value) => '$' + value.toFixed(2)
+                                  },
+                                  grid: { color: 'rgba(148, 163, 184, 0.1)' }
+                                },
+                                x: {
+                                  ticks: { 
+                                    color: '#9ca3af',
+                                    maxRotation: 45,
+                                    minRotation: 45
+                                  },
+                                  grid: { color: 'rgba(148, 163, 184, 0.05)' }
+                                }
+                              }
+                            }
+                          });
+                        }
+                      }, 100);
+
+                      return h('canvas', { ref: signalsChartRef });
+                    })()
+                  )
+                ),
+
+                // Recent predictions table
+                h('div', { className: 'glass-panel rounded-xl p-6 border border-cyan-500/20' },
+                  h('h3', { className: 'text-xl font-bold text-white mb-4' }, '📋 Recent Predictions'),
+                  h('div', { className: 'overflow-x-auto' },
+                    h('table', { className: 'w-full' },
+                      h('thead', null,
+                        h('tr', { className: 'border-b border-gray-700' },
+                          h('th', { className: 'text-left py-3 px-4 text-gray-400 font-semibold text-sm' }, 'Date'),
+                          h('th', { className: 'text-right py-3 px-4 text-gray-400 font-semibold text-sm' }, 'Close'),
+                          h('th', { className: 'text-right py-3 px-4 text-gray-400 font-semibold text-sm' }, 'Pred High'),
+                          h('th', { className: 'text-right py-3 px-4 text-gray-400 font-semibold text-sm' }, 'Pred Low'),
+                          h('th', { className: 'text-right py-3 px-4 text-gray-400 font-semibold text-sm' }, 'Take Profit'),
+                          h('th', { className: 'text-right py-3 px-4 text-gray-400 font-semibold text-sm' }, 'Stop Loss'),
+                          h('th', { className: 'text-center py-3 px-4 text-gray-400 font-semibold text-sm' }, 'Actual Range')
+                        )
+                      ),
+                      h('tbody', null,
+                        ...predictions.predictions
+                          .filter(p => p.ticker === selectedTicker)
+                          .sort((a, b) => new Date(b.date) - new Date(a.date))
+                          .slice(0, 20)
+                          .map((pred, idx) => {
+                            const inRange = pred.highODE !== null && pred.lowODE !== null &&
+                              pred.lowODE >= pred.predLow * 0.98 && pred.highODE <= pred.predHigh * 1.02;
+                            
+                            return h('tr', { 
+                              key: idx, 
+                              className: `border-b border-gray-800 hover:bg-slate-800/30 transition ${inRange ? 'bg-green-500/5' : ''}`
+                            },
+                              h('td', { className: 'py-3 px-4 text-white font-mono text-sm' }, pred.date),
+                              h('td', { className: 'py-3 px-4 text-right font-mono text-cyan-400 font-bold' }, 
+                                pred.closeODE ? `$${pred.closeODE.toFixed(2)}` : '-'
+                              ),
+                              h('td', { className: 'py-3 px-4 text-right font-mono text-green-400' }, 
+                                pred.predHigh ? `$${pred.predHigh.toFixed(2)}` : '-'
+                              ),
+                              h('td', { className: 'py-3 px-4 text-right font-mono text-red-400' }, 
+                                pred.predLow ? `$${pred.predLow.toFixed(2)}` : '-'
+                              ),
+                              h('td', { className: 'py-3 px-4 text-right font-mono text-green-300' }, 
+                                pred.takeProfit ? `$${pred.takeProfit.toFixed(2)}` : '-'
+                              ),
+                              h('td', { className: 'py-3 px-4 text-right font-mono text-red-300' }, 
+                                pred.stopLoss ? `$${pred.stopLoss.toFixed(2)}` : '-'
+                              ),
+                              h('td', { className: 'py-3 px-4 text-center text-sm' },
+                                pred.highODE && pred.lowODE
+                                  ? h('span', { 
+                                      className: `px-2 py-1 rounded-full text-xs font-bold ${
+                                        inRange ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+                                      }`
+                                    }, inRange ? '✓ In Range' : '✗ Out of Range')
+                                  : h('span', { className: 'text-gray-500 text-xs' }, 'Pending')
+                              )
+                            );
+                          })
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          ),
+
+          // Modals
+          showModal && selectedStock && h(StockModal, { 
+            stock: selectedStock, 
+            onClose: () => setShowModal(false),
+            activeTab: activeTab,
+            setActiveTab: setActiveTab
+          }),
+          showAddTransaction && h(AddTransactionForm, {
+            onClose: () => setShowAddTransaction(false),
+            onSubmit: handleAddTransaction,
+            formData: formData,
+            setFormData: setFormData,
+            submitting: submitting
+          })
+        )
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(React.createElement(TradingDashboard));
+  </script>
+</body>
+</html>
