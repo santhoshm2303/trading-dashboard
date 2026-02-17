@@ -1,0 +1,8 @@
+{
+  "name": "trading-dashboard",
+  "version": "1.0.0",
+  "description": "Trading portfolio dashboard with Google Sheets integration",
+  "dependencies": {
+    "googleapis": "^118.0.0"
+  }
+}
