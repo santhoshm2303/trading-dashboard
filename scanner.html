@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stock Scanner - Trading Dashboard</title>
+  <script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    body {
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      min-height: 100vh;
+    }
+    .glass-panel {
+      background: rgba(30, 41, 59, 0.7);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(148, 163, 184, 0.1);
+    }
+    .hover-lift {
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .hover-lift:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    }
+    input, select, textarea {
+      background: rgba(15, 23, 42, 0.8) !important;
+      color: white !important;
+    }
+    input::placeholder {
+      color: rgba(156, 163, 175, 0.6) !important;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" data-type="module">
+    const { useState, useEffect } = React;
+    const h = React.createElement;
+
+    const ALL_STOCKS = [
+      { ticker: 'BMNR', name: 'Biomerica', exchange: 'US' },
+      { ticker: 'SCLX', name: 'Scilex', exchange: 'US' },
+      { ticker: 'COO', name: 'Cooper', exchange: 'US' },
+      { ticker: 'ACHR', name: 'Archer Aviation', exchange: 'US' },
+      { ticker: 'ABTC', name: 'ABTC', exchange: 'US' },
+      { ticker: 'RZLT', name: 'Rezolute', exchange: 'US' },
+      { ticker: 'GPUS', name: 'Hyperscale Data', exchange: 'US' },
+      { ticker: 'NAVN', name: 'Navient', exchange: 'US' },
+      { ticker: 'ZNTL', name: 'Zentalis', exchange: 'US' },
+      { ticker: 'TLX.AX', name: 'Telix', exchange: 'ASX' },
+      { ticker: 'MRD.AX', name: 'Macquarie', exchange: 'ASX' },
+      { ticker: 'ALR.AX', name: 'Allergan', exchange: 'ASX' },
+      { ticker: 'SPD.AX', name: 'Speed', exchange: 'ASX' },
+      { ticker: 'LKY.AX', name: 'LKY', exchange: 'ASX' },
+      { ticker: 'MSB.AX', name: 'Mesoblast', exchange: 'ASX' }
+    ];
+
+    function StockScanner() {
+      const [selectedStocks, setSelectedStocks] = useState(['BMNR', 'ACHR', 'GPUS', 'NAVN', 'RZLT']);
+      const [scannerResults, setScannerResults] = useState(null);
+      const [scannerLoading, setScannerLoading] = useState(false);
+      const [filter, setFilter] = useState('all');
+      const [selectedDetail, setSelectedDetail] = useState(null);
+      const [autoScanComplete, setAutoScanComplete] = useState(false);
+
+      const runScanner = async () => {
+        setScannerLoading(true);
+        try {
+          const response = await fetch('/api/stock-scanner', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tickers: selectedStocks })
+          });
+          const data = await response.json();
+          setScannerResults(data);
+        } catch (err) {
+          console.error('Scanner error:', err);
+          alert('Failed to scan stocks: ' + err.message);
+        } finally {
+          setScannerLoading(false);
+        }
+      };
+
+      // Auto-scan on load
+      useEffect(() => {
+        if (!autoScanComplete && selectedStocks.length > 0) {
+          runScanner();
+          setAutoScanComplete(true);
+        }
+      }, []);
+
+      const toggleStock = (ticker) => {
+        if (selectedStocks.includes(ticker)) {
+          setSelectedStocks(selectedStocks.filter(t => t !== ticker));
+        } else {
+          setSelectedStocks([...selectedStocks, ticker]);
+        }
+      };
+
+      const filteredResults = scannerResults?.ranked?.filter(stock => {
+        if (filter === 'asx') return stock.ticker.endsWith('.AX');
+        if (filter === 'us') return !stock.ticker.endsWith('.AX');
+        if (filter === 'strong') return stock.score >= 60;
+        return true;
+      }) || [];
+
+      return h('div', { className: 'min-h-screen p-6' },
+        h('div', { className: 'max-w-7xl mx-auto' },
+          // Header
+          h('div', { className: 'glass-panel rounded-2xl p-6 mb-6 border border-cyan-500/20' },
+            h('div', { className: 'flex items-center justify-between' },
+              h('div', null,
+                h('h1', { className: 'text-3xl font-bold text-white mb-2' }, '🔍 Stock Scanner'),
+                h('p', { className: 'text-gray-400' }, 
+                  scannerResults ? `Last scanned: ${new Date(scannerResults.scannedAt).toLocaleString()}` : 'Technical analysis powered by RSI, MACD, EMA, Volume'
+                )
+              ),
+              h('a', {
+                href: '/',
+                className: 'px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-semibold transition'
+              }, '← Back to Dashboard')
+            )
+          ),
+
+          // Stock Selector
+          h('div', { className: 'glass-panel rounded-xl p-6 mb-6 border border-cyan-500/20' },
+            h('h3', { className: 'text-xl font-bold text-white mb-4' }, '📌 Select Stocks to Scan'),
+            h('div', { className: 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-4' },
+              ...ALL_STOCKS.map(stock =>
+                h('label', {
+                  key: stock.ticker,
+                  className: `glass-panel p-3 rounded-lg cursor-pointer transition hover:bg-slate-700 ${
+                    selectedStocks.includes(stock.ticker) ? 'border-2 border-cyan-500' : 'border border-gray-700'
+                  }`
+                },
+                  h('input', {
+                    type: 'checkbox',
+                    checked: selectedStocks.includes(stock.ticker),
+                    onChange: () => toggleStock(stock.ticker),
+                    className: 'mr-2'
+                  }),
+                  h('span', { className: 'font-mono font-bold text-white' }, stock.ticker),
+                  h('div', { className: 'text-xs text-gray-400' }, 
+                    `${stock.name} (${stock.exchange})`
+                  )
+                )
+              )
+            ),
+            h('div', { className: 'flex gap-2' },
+              h('button', {
+                onClick: runScanner,
+                disabled: scannerLoading || selectedStocks.length === 0,
+                className: `px-6 py-3 ${
+                  scannerLoading ? 'bg-gray-600' : 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700'
+                } text-white rounded-lg font-bold transition disabled:opacity-50`
+              }, scannerLoading ? 'Scanning...' : `🔍 Scan ${selectedStocks.length} Stocks`),
+              h('button', {
+                onClick: () => setSelectedStocks(ALL_STOCKS.map(s => s.ticker)),
+                className: 'px-4 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-semibold transition'
+              }, 'Select All'),
+              h('button', {
+                onClick: () => setSelectedStocks([]),
+                className: 'px-4 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-semibold transition'
+              }, 'Clear All')
+            )
+          ),
+
+          // Filters
+          scannerResults && h('div', { className: 'flex gap-2 mb-6' },
+            h('button', {
+              onClick: () => setFilter('all'),
+              className: `px-4 py-2 rounded-lg font-semibold transition ${
+                filter === 'all' ? 'bg-cyan-500 text-white' : 'glass-panel text-gray-400 hover:text-white'
+              }`
+            }, `All (${scannerResults.ranked?.length || 0})`),
+            h('button', {
+              onClick: () => setFilter('strong'),
+              className: `px-4 py-2 rounded-lg font-semibold transition ${
+                filter === 'strong' ? 'bg-cyan-500 text-white' : 'glass-panel text-gray-400 hover:text-white'
+              }`
+            }, '🟢 Strong Only'),
+            h('button', {
+              onClick: () => setFilter('asx'),
+              className: `px-4 py-2 rounded-lg font-semibold transition ${
+                filter === 'asx' ? 'bg-cyan-500 text-white' : 'glass-panel text-gray-400 hover:text-white'
+              }`
+            }, '🇦🇺 ASX'),
+            h('button', {
+              onClick: () => setFilter('us'),
+              className: `px-4 py-2 rounded-lg font-semibold transition ${
+                filter === 'us' ? 'bg-cyan-500 text-white' : 'glass-panel text-gray-400 hover:text-white'
+              }`
+            }, '🇺🇸 US')
+          ),
+
+          // Loading
+          scannerLoading && h('div', { className: 'glass-panel rounded-xl p-12 text-center' },
+            h('div', { className: 'inline-block animate-spin rounded-full h-16 w-16 border-4 border-cyan-500 border-t-transparent mb-4' }),
+            h('p', { className: 'text-gray-400 text-lg' }, `Scanning ${selectedStocks.length} stocks...`),
+            h('p', { className: 'text-gray-500 text-sm mt-2' }, 'Analyzing RSI, MACD, EMAs, Volume...')
+          ),
+
+          // Results Table
+          !scannerLoading && scannerResults && h('div', { className: 'glass-panel rounded-xl p-6 border border-cyan-500/20' },
+            h('h3', { className: 'text-2xl font-bold text-white mb-6' }, 
+              `📊 Scan Results - ${filteredResults.length} Stock${filteredResults.length !== 1 ? 's' : ''}`
+            ),
+            filteredResults.length > 0 ? h('div', { className: 'overflow-x-auto' },
+              h('table', { className: 'w-full' },
+                h('thead', null,
+                  h('tr', { className: 'border-b border-gray-700' },
+                    h('th', { className: 'text-left py-3 px-4 text-gray-400 font-semibold' }, 'Rank'),
+                    h('th', { className: 'text-left py-3 px-4 text-gray-400 font-semibold' }, 'Stock'),
+                    h('th', { className: 'text-right py-3 px-4 text-gray-400 font-semibold' }, 'Score'),
+                    h('th', { className: 'text-right py-3 px-4 text-gray-400 font-semibold' }, 'Price'),
+                    h('th', { className: 'text-right py-3 px-4 text-gray-400 font-semibold' }, 'Change'),
+                    h('th', { className: 'text-right py-3 px-4 text-gray-400 font-semibold' }, 'RSI'),
+                    h('th', { className: 'text-center py-3 px-4 text-gray-400 font-semibold' }, 'MACD'),
+                    h('th', { className: 'text-center py-3 px-4 text-gray-400 font-semibold' }, 'Trend'),
+                    h('th', { className: 'text-center py-3 px-4 text-gray-400 font-semibold' }, 'Actions')
+                  )
+                ),
+                h('tbody', null,
+                  ...filteredResults.map((stock, idx) =>
+                    h('tr', {
+                      key: stock.ticker,
+                      className: 'border-b border-gray-800 hover:bg-slate-800/30 transition'
+                    },
+                      h('td', { className: 'py-4 px-4' },
+                        h('div', { className: 'text-2xl font-bold text-cyan-400' }, `#${idx + 1}`)
+                      ),
+                      h('td', { className: 'py-4 px-4' },
+                        h('div', { className: 'font-mono font-bold text-white text-lg' }, stock.ticker),
+                        h('div', { className: 'text-xs text-gray-500' }, 
+                          stock.ticker.endsWith('.AX') ? 'ASX' : 'US'
+                        )
+                      ),
+                      h('td', { className: 'py-4 px-4 text-right' },
+                        h('div', {
+                          className: `text-2xl font-bold ${
+                            stock.score >= 75 ? 'text-green-400' :
+                            stock.score >= 60 ? 'text-green-300' :
+                            stock.score >= 45 ? 'text-yellow-400' : 'text-red-400'
+                          }`
+                        }, stock.score),
+                        h('div', { className: 'text-xs text-gray-500' }, '/100')
+                      ),
+                      h('td', { className: 'py-4 px-4 text-right' },
+                        h('div', { className: 'font-mono text-white font-bold' }, `$${stock.currentPrice}`)
+                      ),
+                      h('td', { className: 'py-4 px-4 text-right' },
+                        h('div', {
+                          className: `font-mono font-bold ${
+                            parseFloat(stock.priceChange) >= 0 ? 'text-green-400' : 'text-red-400'
+                          }`
+                        }, `${parseFloat(stock.priceChange) >= 0 ? '+' : ''}${stock.priceChange}%`)
+                      ),
+                      h('td', { className: 'py-4 px-4 text-right' },
+                        h('div', {
+                          className: `font-mono font-bold ${
+                            stock.indicators.rsi >= 70 ? 'text-red-400' :
+                            stock.indicators.rsi >= 50 ? 'text-green-400' :
+                            stock.indicators.rsi >= 30 ? 'text-yellow-400' : 'text-green-300'
+                          }`
+                        }, stock.indicators.rsi)
+                      ),
+                      h('td', { className: 'py-4 px-4 text-center' },
+                        h('div', {
+                          className: `text-2xl ${stock.indicators.macd?.bullish ? 'text-green-400' : 'text-red-400'}`
+                        }, stock.indicators.macd?.bullish ? '✅' : '❌')
+                      ),
+                      h('td', { className: 'py-4 px-4 text-center' },
+                        h('div', { className: 'text-3xl' }, stock.trendEmoji)
+                      ),
+                      h('td', { className: 'py-4 px-4 text-center' },
+                        h('button', {
+                          onClick: () => setSelectedDetail(stock),
+                          className: 'px-4 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg font-semibold transition text-sm'
+                        }, 'Details')
+                      )
+                    )
+                  )
+                )
+              )
+            ) : h('p', { className: 'text-gray-500 text-center py-12' }, 'No results match the current filter.')
+          ),
+
+          // Errors
+          scannerResults?.errors && scannerResults.errors.length > 0 && h('div', {
+            className: 'glass-panel rounded-xl p-4 mt-4 border border-red-500/20'
+          },
+            h('h4', { className: 'text-red-400 font-bold mb-2' }, '⚠️ Some stocks failed to load:'),
+            h('ul', { className: 'text-sm text-gray-400' },
+              ...scannerResults.errors.map(err =>
+                h('li', { key: err.ticker }, `${err.ticker}: ${err.error}`)
+              )
+            )
+          )
+        ),
+
+        // Detail Modal
+        selectedDetail && h('div', {
+          className: 'fixed inset-0 bg-black/70 flex items-center justify-center p-6 z-50',
+          onClick: () => setSelectedDetail(null)
+        },
+          h('div', {
+            className: 'glass-panel rounded-2xl p-8 max-w-2xl w-full border border-cyan-500/30 max-h-[90vh] overflow-y-auto',
+            onClick: (e) => e.stopPropagation()
+          },
+            h('div', { className: 'flex justify-between items-start mb-6' },
+              h('div', null,
+                h('h2', { className: 'text-3xl font-bold text-white font-mono' }, selectedDetail.ticker),
+                h('p', { className: 'text-gray-400' }, selectedDetail.ticker.endsWith('.AX') ? 'ASX' : 'US Market')
+              ),
+              h('button', {
+                onClick: () => setSelectedDetail(null),
+                className: 'text-gray-400 hover:text-white text-2xl'
+              }, '✕')
+            ),
+
+            // Score Card
+            h('div', { className: 'bg-gradient-to-r from-cyan-500/20 to-blue-500/20 rounded-xl p-6 mb-6 border border-cyan-500/30' },
+              h('div', { className: 'text-center' },
+                h('div', { className: 'text-sm text-gray-400 mb-2' }, 'Overall Score'),
+                h('div', {
+                  className: `text-6xl font-bold mb-2 ${
+                    selectedDetail.score >= 75 ? 'text-green-400' :
+                    selectedDetail.score >= 60 ? 'text-green-300' :
+                    selectedDetail.score >= 45 ? 'text-yellow-400' : 'text-red-400'
+                  }`
+                }, selectedDetail.score),
+                h('div', { className: 'text-4xl mb-2' }, selectedDetail.trendEmoji),
+                h('div', { className: 'text-lg text-gray-300 capitalize' }, selectedDetail.trendSignal + ' Trend')
+              )
+            ),
+
+            // Price Info
+            h('div', { className: 'grid grid-cols-2 gap-4 mb-6' },
+              h('div', { className: 'glass-panel p-4 rounded-lg' },
+                h('div', { className: 'text-xs text-gray-400 mb-1' }, 'Current Price'),
+                h('div', { className: 'text-2xl font-mono font-bold text-white' }, `$${selectedDetail.currentPrice}`)
+              ),
+              h('div', { className: 'glass-panel p-4 rounded-lg' },
+                h('div', { className: 'text-xs text-gray-400 mb-1' }, 'Change'),
+                h('div', {
+                  className: `text-2xl font-mono font-bold ${
+                    parseFloat(selectedDetail.priceChange) >= 0 ? 'text-green-400' : 'text-red-400'
+                  }`
+                }, `${parseFloat(selectedDetail.priceChange) >= 0 ? '+' : ''}${selectedDetail.priceChange}%`)
+              )
+            ),
+
+            // Indicators
+            h('h3', { className: 'text-xl font-bold text-white mb-4' }, 'Technical Indicators'),
+            h('div', { className: 'space-y-3' },
+              h('div', { className: 'glass-panel p-4 rounded-lg flex justify-between items-center' },
+                h('div', null,
+                  h('div', { className: 'text-white font-semibold' }, 'RSI (14)'),
+                  h('div', { className: 'text-xs text-gray-400' }, 'Relative Strength Index')
+                ),
+                h('div', {
+                  className: `text-2xl font-bold ${
+                    selectedDetail.indicators.rsi >= 70 ? 'text-red-400' :
+                    selectedDetail.indicators.rsi >= 50 ? 'text-green-400' :
+                    selectedDetail.indicators.rsi >= 30 ? 'text-yellow-400' : 'text-green-300'
+                  }`
+                }, selectedDetail.indicators.rsi)
+              ),
+              h('div', { className: 'glass-panel p-4 rounded-lg' },
+                h('div', { className: 'flex justify-between items-center mb-2' },
+                  h('div', null,
+                    h('div', { className: 'text-white font-semibold' }, 'MACD'),
+                    h('div', { className: 'text-xs text-gray-400' }, 'Moving Average Convergence Divergence')
+                  ),
+                  h('div', {
+                    className: `text-2xl ${selectedDetail.indicators.macd?.bullish ? 'text-green-400' : 'text-red-400'}`
+                  }, selectedDetail.indicators.macd?.bullish ? '✅ Bullish' : '❌ Bearish')
+                ),
+                h('div', { className: 'text-xs text-gray-500 mt-2' },
+                  `Histogram: ${selectedDetail.indicators.macd?.histogram}`
+                )
+              ),
+              h('div', { className: 'glass-panel p-4 rounded-lg flex justify-between items-center' },
+                h('div', null,
+                  h('div', { className: 'text-white font-semibold' }, '20-Day EMA'),
+                  h('div', { className: 'text-xs text-gray-400' }, 'Exponential Moving Average')
+                ),
+                h('div', null,
+                  h('div', { className: 'text-white font-mono' }, `$${selectedDetail.indicators.ema20}`),
+                  h('div', {
+                    className: `text-xs ${selectedDetail.indicators.aboveEma20 ? 'text-green-400' : 'text-red-400'}`
+                  }, selectedDetail.indicators.aboveEma20 ? '✅ Above' : '❌ Below')
+                )
+              ),
+              h('div', { className: 'glass-panel p-4 rounded-lg flex justify-between items-center' },
+                h('div', null,
+                  h('div', { className: 'text-white font-semibold' }, '50-Day EMA'),
+                  h('div', { className: 'text-xs text-gray-400' }, 'Exponential Moving Average')
+                ),
+                h('div', null,
+                  h('div', { className: 'text-white font-mono' }, `$${selectedDetail.indicators.ema50}`),
+                  h('div', {
+                    className: `text-xs ${selectedDetail.indicators.aboveEma50 ? 'text-green-400' : 'text-red-400'}`
+                  }, selectedDetail.indicators.aboveEma50 ? '✅ Above' : '❌ Below')
+                )
+              ),
+              h('div', { className: 'glass-panel p-4 rounded-lg flex justify-between items-center' },
+                h('div', null,
+                  h('div', { className: 'text-white font-semibold' }, 'Volume Ratio'),
+                  h('div', { className: 'text-xs text-gray-400' }, 'Current vs 20-day Average')
+                ),
+                h('div', {
+                  className: `text-2xl font-bold ${
+                    parseFloat(selectedDetail.indicators.volumeRatio) > 1.5 ? 'text-green-400' :
+                    parseFloat(selectedDetail.indicators.volumeRatio) > 1.0 ? 'text-yellow-400' : 'text-gray-400'
+                  }`
+                }, `${selectedDetail.indicators.volumeRatio}x`)
+              )
+            ),
+
+            h('button', {
+              onClick: () => setSelectedDetail(null),
+              className: 'w-full mt-6 px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-semibold transition'
+            }, 'Close')
+          )
+        )
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(h(StockScanner));
+  </script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</body>
+</html>
