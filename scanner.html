@@ -68,6 +68,7 @@
       const [selectedDetail, setSelectedDetail] = useState(null);
       const [autoScanComplete, setAutoScanComplete] = useState(false);
       const [historyDays, setHistoryDays] = useState(10);
+      const [historyView, setHistoryView] = useState('table'); // 'table' or 'chart'
 
       const runScanner = async () => {
         setScannerLoading(true);
@@ -94,6 +95,97 @@
           setAutoScanComplete(true);
         }
       }, []);
+
+      // Render price history chart when view changes
+      useEffect(() => {
+        if (selectedDetail && historyView === 'chart') {
+          const canvas = document.getElementById('priceHistoryChart');
+          if (!canvas) return;
+
+          // Destroy existing chart if any
+          const existingChart = Chart.getChart(canvas);
+          if (existingChart) existingChart.destroy();
+
+          const ctx = canvas.getContext('2d');
+          const prices = selectedDetail.sparkline.slice(-historyDays);
+          const labels = prices.map((_, idx) => `${historyDays - idx}d ago`).reverse();
+          
+          new Chart(ctx, {
+            type: 'line',
+            data: {
+              labels: labels,
+              datasets: [{
+                label: 'Close Price',
+                data: prices,
+                borderColor: 'rgb(34, 211, 238)',
+                backgroundColor: 'rgba(34, 211, 238, 0.1)',
+                borderWidth: 3,
+                fill: true,
+                tension: 0.4,
+                pointRadius: 4,
+                pointHoverRadius: 6,
+                pointBackgroundColor: 'rgb(34, 211, 238)',
+                pointBorderColor: 'white',
+                pointBorderWidth: 2
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: {
+                  display: false
+                },
+                tooltip: {
+                  mode: 'index',
+                  intersect: false,
+                  backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                  titleColor: 'white',
+                  bodyColor: 'white',
+                  borderColor: 'rgb(34, 211, 238)',
+                  borderWidth: 1,
+                  padding: 12,
+                  displayColors: false,
+                  callbacks: {
+                    label: function(context) {
+                      return '$' + context.parsed.y.toFixed(2);
+                    }
+                  }
+                }
+              },
+              scales: {
+                y: {
+                  beginAtZero: false,
+                  grid: {
+                    color: 'rgba(148, 163, 184, 0.1)'
+                  },
+                  ticks: {
+                    color: 'rgb(148, 163, 184)',
+                    callback: function(value) {
+                      return '$' + value.toFixed(2);
+                    }
+                  }
+                },
+                x: {
+                  grid: {
+                    color: 'rgba(148, 163, 184, 0.1)'
+                  },
+                  ticks: {
+                    color: 'rgb(148, 163, 184)',
+                    maxRotation: 45,
+                    minRotation: 45
+                  }
+                }
+              },
+              interaction: {
+                mode: 'nearest',
+                axis: 'x',
+                intersect: false
+              }
+            }
+          });
+        }
+      }, [selectedDetail, historyView, historyDays]);
 
       const toggleStock = (ticker) => {
         if (selectedStocks.includes(ticker)) {
@@ -428,20 +520,38 @@
             h('div', { className: 'mt-6' },
               h('div', { className: 'flex justify-between items-center mb-4' },
                 h('h3', { className: 'text-xl font-bold text-white' }, '📈 Price History'),
-                h('div', { className: 'flex items-center gap-2' },
-                  h('label', { className: 'text-gray-400 text-sm' }, 'Show last'),
-                  h('input', {
-                    type: 'number',
-                    value: historyDays,
-                    onChange: (e) => setHistoryDays(Math.min(30, Math.max(1, parseInt(e.target.value) || 10))),
-                    className: 'w-16 px-2 py-1 rounded text-center font-mono font-bold',
-                    min: 1,
-                    max: 30
-                  }),
-                  h('span', { className: 'text-gray-400 text-sm' }, 'days')
+                h('div', { className: 'flex items-center gap-4' },
+                  h('div', { className: 'flex gap-2' },
+                    h('button', {
+                      onClick: () => setHistoryView('table'),
+                      className: `px-3 py-1 rounded text-sm font-semibold transition ${
+                        historyView === 'table' ? 'bg-cyan-500 text-white' : 'bg-slate-700 text-gray-400 hover:text-white'
+                      }`
+                    }, '📊 Table'),
+                    h('button', {
+                      onClick: () => setHistoryView('chart'),
+                      className: `px-3 py-1 rounded text-sm font-semibold transition ${
+                        historyView === 'chart' ? 'bg-cyan-500 text-white' : 'bg-slate-700 text-gray-400 hover:text-white'
+                      }`
+                    }, '📈 Chart')
+                  ),
+                  h('div', { className: 'flex items-center gap-2' },
+                    h('label', { className: 'text-gray-400 text-sm' }, 'Last'),
+                    h('input', {
+                      type: 'number',
+                      value: historyDays,
+                      onChange: (e) => setHistoryDays(Math.min(30, Math.max(1, parseInt(e.target.value) || 10))),
+                      className: 'w-16 px-2 py-1 rounded text-center font-mono font-bold',
+                      min: 1,
+                      max: 30
+                    }),
+                    h('span', { className: 'text-gray-400 text-sm' }, 'days')
+                  )
                 )
               ),
-              h('div', { className: 'glass-panel rounded-lg p-4 max-h-64 overflow-y-auto' },
+              
+              // Table View
+              historyView === 'table' && h('div', { className: 'glass-panel rounded-lg p-4 max-h-64 overflow-y-auto' },
                 h('table', { className: 'w-full text-sm' },
                   h('thead', null,
                     h('tr', { className: 'border-b border-gray-700' },
@@ -474,6 +584,15 @@
                     })
                   )
                 )
+              ),
+              
+              // Chart View
+              historyView === 'chart' && h('div', { className: 'glass-panel rounded-lg p-4' },
+                h('canvas', {
+                  id: 'priceHistoryChart',
+                  className: 'w-full',
+                  style: { height: '300px' }
+                })
               )
             ),
 
