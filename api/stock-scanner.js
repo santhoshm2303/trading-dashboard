@@ -51,7 +51,7 @@ function calculateMACD(prices) {
 
 function fetchYahooData(ticker) {
   return new Promise(async (resolve, reject) => {
-    const period1 = Math.floor(Date.now() / 1000) - (60 * 24 * 60 * 60); // 60 days ago
+    const period1 = Math.floor(Date.now() / 1000) - (90 * 24 * 60 * 60); // 90 days ago
     const period2 = Math.floor(Date.now() / 1000);
     
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?period1=${period1}&period2=${period2}&interval=1d`;
@@ -84,15 +84,15 @@ function fetchYahooData(ticker) {
 function analyzeStock(data) {
   const { ticker, close, volume, currentPrice } = data;
   
-  if (close.length < 60) {
+  if (close.length < 30) {
     return { ticker, error: 'Insufficient data', score: 0 };
   }
   
   // Calculate indicators
   const rsi = calculateRSI(close);
   const macd = calculateMACD(close);
-  const ema20 = calculateEMA(close, 20);
-  const ema50 = calculateEMA(close, 50);
+  const ema20 = calculateEMA(close, Math.min(20, close.length - 5));
+  const ema50 = calculateEMA(close, Math.min(50, close.length - 5));
   
   // Volume analysis
   const avgVolume = volume.slice(-20).reduce((a, b) => a + b) / 20;
