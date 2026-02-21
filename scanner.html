@@ -309,12 +309,24 @@
                   h('tr', { className: 'border-b border-gray-700' },
                     h('th', { className: 'text-left py-3 px-4 text-gray-400 font-semibold' }, 'Rank'),
                     h('th', { className: 'text-left py-3 px-4 text-gray-400 font-semibold' }, 'Stock'),
-                    h('th', { className: 'text-right py-3 px-4 text-gray-400 font-semibold' }, 'Score'),
+                    h('th', { 
+                      className: 'text-right py-3 px-4 text-gray-400 font-semibold cursor-help',
+                      title: 'Combined strength (0-100). Higher = Better!\n75-100: Strong uptrend ✓\n60-74: Moderate uptrend ✓\n45-59: Weak/neutral\n0-44: Downtrend ✗'
+                    }, 'Score 💯'),
                     h('th', { className: 'text-right py-3 px-4 text-gray-400 font-semibold' }, 'Price'),
                     h('th', { className: 'text-right py-3 px-4 text-gray-400 font-semibold' }, 'Change'),
-                    h('th', { className: 'text-right py-3 px-4 text-gray-400 font-semibold' }, 'RSI'),
-                    h('th', { className: 'text-center py-3 px-4 text-gray-400 font-semibold' }, 'MACD'),
-                    h('th', { className: 'text-center py-3 px-4 text-gray-400 font-semibold' }, 'Trend'),
+                    h('th', { 
+                      className: 'text-right py-3 px-4 text-gray-400 font-semibold cursor-help',
+                      title: 'Relative Strength Index (0-100)\n70-100: Overbought (too hot)\n50-70: Healthy uptrend ✓ BEST\n30-50: Neutral\n0-30: Oversold (might bounce)'
+                    }, 'RSI'),
+                    h('th', { 
+                      className: 'text-center py-3 px-4 text-gray-400 font-semibold cursor-help',
+                      title: 'Moving Average Convergence Divergence\n✅ Green = Bullish (buy signal)\n❌ Red = Bearish (sell signal)'
+                    }, 'MACD'),
+                    h('th', { 
+                      className: 'text-center py-3 px-4 text-gray-400 font-semibold cursor-help',
+                      title: 'Overall trend signal\n🟢 Green = Strong/Moderate uptrend ✓\n🟡 Yellow = Weak/neutral\n🔴 Red = Downtrend ✗'
+                    }, 'Trend'),
                     h('th', { className: 'text-center py-3 px-4 text-gray-400 font-semibold' }, 'Actions')
                   )
                 ),
