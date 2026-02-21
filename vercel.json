@@ -14,6 +14,14 @@
       "dest": "/api/fetch-predictions.js"
     },
     {
+      "src": "/api/stock-scanner",
+      "dest": "/api/stock-scanner.js"
+    },
+    {
+      "src": "/scanner.html",
+      "dest": "/scanner.html"
+    },
+    {
       "src": "/(.*)",
       "dest": "/index.html"
     }
