@@ -67,6 +67,7 @@
       const [filter, setFilter] = useState('all');
       const [selectedDetail, setSelectedDetail] = useState(null);
       const [autoScanComplete, setAutoScanComplete] = useState(false);
+      const [historyDays, setHistoryDays] = useState(10);
 
       const runScanner = async () => {
         setScannerLoading(true);
@@ -420,6 +421,59 @@
                     parseFloat(selectedDetail.indicators.volumeRatio) > 1.0 ? 'text-yellow-400' : 'text-gray-400'
                   }`
                 }, `${selectedDetail.indicators.volumeRatio}x`)
+              )
+            ),
+
+            // Price History Section
+            h('div', { className: 'mt-6' },
+              h('div', { className: 'flex justify-between items-center mb-4' },
+                h('h3', { className: 'text-xl font-bold text-white' }, '📈 Price History'),
+                h('div', { className: 'flex items-center gap-2' },
+                  h('label', { className: 'text-gray-400 text-sm' }, 'Show last'),
+                  h('input', {
+                    type: 'number',
+                    value: historyDays,
+                    onChange: (e) => setHistoryDays(Math.min(30, Math.max(1, parseInt(e.target.value) || 10))),
+                    className: 'w-16 px-2 py-1 rounded text-center font-mono font-bold',
+                    min: 1,
+                    max: 30
+                  }),
+                  h('span', { className: 'text-gray-400 text-sm' }, 'days')
+                )
+              ),
+              h('div', { className: 'glass-panel rounded-lg p-4 max-h-64 overflow-y-auto' },
+                h('table', { className: 'w-full text-sm' },
+                  h('thead', null,
+                    h('tr', { className: 'border-b border-gray-700' },
+                      h('th', { className: 'text-left py-2 text-gray-400 font-semibold' }, 'Day'),
+                      h('th', { className: 'text-right py-2 text-gray-400 font-semibold' }, 'Close Price'),
+                      h('th', { className: 'text-right py-2 text-gray-400 font-semibold' }, 'Change')
+                    )
+                  ),
+                  h('tbody', null,
+                    ...selectedDetail.sparkline.slice(-historyDays).reverse().map((price, idx) => {
+                      const dayNum = historyDays - idx;
+                      const prevPrice = idx < selectedDetail.sparkline.slice(-historyDays).length - 1 
+                        ? selectedDetail.sparkline.slice(-historyDays).reverse()[idx + 1]
+                        : price;
+                      const change = ((price - prevPrice) / prevPrice * 100).toFixed(2);
+                      const isPositive = parseFloat(change) >= 0;
+                      
+                      return h('tr', {
+                        key: idx,
+                        className: 'border-b border-gray-800 hover:bg-slate-800/30'
+                      },
+                        h('td', { className: 'py-2 text-gray-400' }, `${dayNum} ${dayNum === 1 ? 'day ago' : 'days ago'}`),
+                        h('td', { className: 'text-right font-mono font-bold text-white' }, `$${price.toFixed(2)}`),
+                        h('td', {
+                          className: `text-right font-mono font-bold ${
+                            isPositive ? 'text-green-400' : 'text-red-400'
+                          }`
+                        }, idx === selectedDetail.sparkline.slice(-historyDays).length - 1 ? '-' : `${isPositive ? '+' : ''}${change}%`)
+                      );
+                    })
+                  )
+                )
               )
             ),
 
