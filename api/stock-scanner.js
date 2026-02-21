@@ -1,5 +1,3 @@
-const https = require('https');
-
 // Technical Analysis Functions
 function calculateRSI(prices, period = 14) {
   if (prices.length < period + 1) return null;
@@ -52,38 +50,34 @@ function calculateMACD(prices) {
 }
 
 function fetchYahooData(ticker) {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     const period1 = Math.floor(Date.now() / 1000) - (60 * 24 * 60 * 60); // 60 days ago
     const period2 = Math.floor(Date.now() / 1000);
     
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?period1=${period1}&period2=${period2}&interval=1d`;
     
-    https.get(url, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try {
-          const json = JSON.parse(data);
-          if (json.chart?.result?.[0]) {
-            const result = json.chart.result[0];
-            const quote = result.indicators.quote[0];
-            resolve({
-              ticker,
-              timestamps: result.timestamp,
-              close: quote.close.filter(v => v !== null),
-              volume: quote.volume.filter(v => v !== null),
-              high: quote.high.filter(v => v !== null),
-              low: quote.low.filter(v => v !== null),
-              currentPrice: quote.close.filter(v => v !== null).slice(-1)[0]
-            });
-          } else {
-            reject(new Error(`No data for ${ticker}`));
-          }
-        } catch (e) {
-          reject(e);
-        }
-      });
-    }).on('error', reject);
+    try {
+      const response = await fetch(url);
+      const json = await response.json();
+      
+      if (json.chart?.result?.[0]) {
+        const result = json.chart.result[0];
+        const quote = result.indicators.quote[0];
+        resolve({
+          ticker,
+          timestamps: result.timestamp,
+          close: quote.close.filter(v => v !== null),
+          volume: quote.volume.filter(v => v !== null),
+          high: quote.high.filter(v => v !== null),
+          low: quote.low.filter(v => v !== null),
+          currentPrice: quote.close.filter(v => v !== null).slice(-1)[0]
+        });
+      } else {
+        reject(new Error(`No data for ${ticker}`));
+      }
+    } catch (error) {
+      reject(error);
+    }
   });
 }
 
@@ -213,10 +207,17 @@ module.exports = async (req, res) => {
         const data = await fetchYahooData(ticker);
         const analysis = analyzeStock(data);
         results.push(analysis);
-        // Wait 500ms between requests to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // Wait 1.5 seconds between requests to avoid rate limiting
+        if (tickers.indexOf(ticker) < tickers.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1500));
+        }
       } catch (err) {
+        console.error(`Error fetching ${ticker}:`, err.message);
         results.push({ ticker, error: err.message, score: 0 });
+        // Still wait even on error to avoid hammering the API
+        if (tickers.indexOf(ticker) < tickers.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1500));
+        }
       }
     }
     
