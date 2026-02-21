@@ -206,14 +206,19 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: 'Please provide tickers array' });
     }
 
-    // Fetch data for all tickers in parallel
-    const promises = tickers.map(ticker => 
-      fetchYahooData(ticker)
-        .then(analyzeStock)
-        .catch(err => ({ ticker, error: err.message, score: 0 }))
-    );
-
-    const results = await Promise.all(promises);
+    // Fetch data with delays to avoid rate limiting
+    const results = [];
+    for (const ticker of tickers) {
+      try {
+        const data = await fetchYahooData(ticker);
+        const analysis = analyzeStock(data);
+        results.push(analysis);
+        // Wait 500ms between requests to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } catch (err) {
+        results.push({ ticker, error: err.message, score: 0 });
+      }
+    }
     
     // Sort by score (highest first)
     const ranked = results
