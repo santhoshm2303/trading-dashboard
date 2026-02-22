@@ -7,7 +7,6 @@
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.2.1/dist/chartjs-chart-financial.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
@@ -1909,43 +1908,40 @@
                         if (signalsChartRef.current && tickerData.length > 0) {
                           const ctx = signalsChartRef.current.getContext('2d');
                           signalsChartInstance.current = new Chart(ctx, {
-                            type: 'candlestick',
+                            type: 'bar',
                             data: {
                               labels: tickerData.map(d => d.date),
                               datasets: [
+                                // High-Low range as bars (wicks/shadows)
                                 {
-                                  label: 'OHLC',
-                                  data: tickerData.map(d => ({
-                                    x: d.date,
-                                    o: d.closeODE || d.lowODE, // Use close as open (ODE data)
-                                    h: d.highODE,
-                                    l: d.lowODE,
-                                    c: d.closeODE
-                                  })),
-                                  borderColor: {
-                                    up: '#10b981',
-                                    down: '#ef4444',
-                                    unchanged: '#6b7280'
-                                  },
-                                  backgroundColor: {
-                                    up: 'rgba(16, 185, 129, 0.3)',
-                                    down: 'rgba(239, 68, 68, 0.3)',
-                                    unchanged: 'rgba(107, 114, 128, 0.3)'
-                                  },
-                                  borderWidth: 1.5
+                                  label: 'High-Low Range',
+                                  data: tickerData.map(d => [d.lowODE, d.highODE]),
+                                  backgroundColor: tickerData.map((d, idx) => {
+                                    const prevClose = idx > 0 ? tickerData[idx - 1].closeODE : d.closeODE;
+                                    return d.closeODE >= prevClose ? 'rgba(16, 185, 129, 0.4)' : 'rgba(239, 68, 68, 0.4)';
+                                  }),
+                                  borderColor: tickerData.map((d, idx) => {
+                                    const prevClose = idx > 0 ? tickerData[idx - 1].closeODE : d.closeODE;
+                                    return d.closeODE >= prevClose ? '#10b981' : '#ef4444';
+                                  }),
+                                  borderWidth: 2,
+                                  barPercentage: 0.8,
+                                  categoryPercentage: 0.9,
+                                  order: 3
                                 },
+                                // Close price line
                                 {
                                   label: 'Close (ODE)',
                                   type: 'line',
                                   data: tickerData.map(d => d.closeODE),
                                   borderColor: '#06b6d4',
                                   backgroundColor: 'transparent',
-                                  borderWidth: 2,
-                                  pointRadius: 3,
-                                  pointHoverRadius: 5,
+                                  borderWidth: 2.5,
+                                  pointRadius: 4,
+                                  pointHoverRadius: 6,
                                   pointBackgroundColor: '#06b6d4',
                                   pointBorderColor: 'white',
-                                  pointBorderWidth: 1,
+                                  pointBorderWidth: 2,
                                   tension: 0.1,
                                   fill: false,
                                   order: 1
