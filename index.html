@@ -687,6 +687,7 @@
       const [selectedStock, setSelectedStock] = useState(null);
       const [showModal, setShowModal] = useState(false);
       const [currencyView, setCurrencyView] = useState('AUD');
+      const [brokerFilter, setBrokerFilter] = useState('All');
       const [filterExchange, setFilterExchange] = useState('ALL');
       const [activeTab, setActiveTab] = useState('transactions');
       const [showAddTransaction, setShowAddTransaction] = useState(false);
@@ -1316,6 +1317,20 @@
                   onClick: () => setCurrencyView('USD'),
                   className: `px-4 py-2 rounded-lg font-semibold transition ${currencyView === 'USD' ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg' : 'bg-slate-800/50 text-gray-400 hover:text-white hover:bg-slate-700'}`
                 }, '$ USD')
+              ),
+              h('div', { className: 'flex gap-2' },
+                h('button', {
+                  onClick: () => setBrokerFilter('All'),
+                  className: `px-4 py-2 rounded-lg font-semibold transition text-sm ${brokerFilter === 'All' ? 'bg-purple-600 text-white shadow-lg' : 'bg-slate-800/50 text-gray-400 hover:text-white hover:bg-slate-700'}`
+                }, 'All Brokers'),
+                h('button', {
+                  onClick: () => setBrokerFilter('CommSec'),
+                  className: `px-4 py-2 rounded-lg font-semibold transition text-sm ${brokerFilter === 'CommSec' ? 'bg-purple-600 text-white shadow-lg' : 'bg-slate-800/50 text-gray-400 hover:text-white hover:bg-slate-700'}`
+                }, 'CommSec'),
+                h('button', {
+                  onClick: () => setBrokerFilter('Selfwealth'),
+                  className: `px-4 py-2 rounded-lg font-semibold transition text-sm ${brokerFilter === 'Selfwealth' ? 'bg-purple-600 text-white shadow-lg' : 'bg-slate-800/50 text-gray-400 hover:text-white hover:bg-slate-700'}`
+                }, 'Selfwealth')
               )
             )
           ),
@@ -1366,6 +1381,7 @@
               (() => {
                 const axsStocks = activeStocks
                   .filter(s => s.index === 'ASX')
+                  .filter(s => brokerFilter === 'All' || s.broker === brokerFilter)
                   .map(stock => {
                     // Calculate cost basis for REMAINING shares only (FIFO)
                     let totalCost = 0;
@@ -1463,7 +1479,7 @@
               (() => {
                 const nonAxsStocks = activeStocks
                   .filter(s => s.index !== 'ASX')
-                  //.filter(s => brokerFilter === 'All' || s.broker === brokerFilter)
+                  .filter(s => brokerFilter === 'All' || s.broker === brokerFilter)
                   .map(stock => {
                     // Calculate cost basis for REMAINING shares only (FIFO)
                     let totalCost = 0;
