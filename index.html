@@ -1515,30 +1515,68 @@
 
               // Non-ASX Holdings
               (() => {
-                const nonAxsStocks = activeStocks
-                  .filter(s => s.index !== 'ASX')
-                  .filter(s => brokerFilter === 'All' || s.purchases.some(p => p.broker === brokerFilter))
-                  .map(stock => {
-                    // Calculate cost basis for REMAINING shares only (FIFO)
+                let nonAxsStocks = activeStocks.filter(s => s.index !== 'ASX');
+                
+                // If filtering by broker, split holdings by broker
+                if (brokerFilter !== 'All') {
+                  nonAxsStocks = nonAxsStocks.map(stock => {
+                    // Calculate holdings for this specific broker only
+                    const brokerPurchases = stock.purchases.filter(p => p.broker === brokerFilter);
+                    const brokerSales = stock.sales.filter(s => s.broker === brokerFilter);
+                    
+                    const brokerTotalVolume = brokerPurchases.reduce((sum, p) => sum + p.volume, 0);
+                    const brokerSoldVolume = brokerSales.reduce((sum, s) => sum + parseNumber(s.volume), 0);
+                    const brokerRemainingVolume = brokerTotalVolume - brokerSoldVolume;
+                    
+                    if (brokerRemainingVolume <= 0) return null;
+                    
+                    // Recalculate cost basis for broker purchases only
+                    let totalCost = 0;
+                    let remainingVolume = brokerRemainingVolume;
+                    
+                    for (const purchase of brokerPurchases) {
+                      if (remainingVolume <= 0) break;
+                      const volumeFromThis = Math.min(remainingVolume, purchase.volume);
+                      const costFromThis = (volumeFromThis * purchase.price) + 
+                        (purchase.fee * (volumeFromThis / purchase.volume));
+                      totalCost += costFromThis;
+                      remainingVolume -= volumeFromThis;
+                    }
+                    
+                    const avgPrice = brokerRemainingVolume > 0 ? totalCost / brokerRemainingVolume : 0;
+                    
+                    return {
+                      ...stock,
+                      remainingVolume: brokerRemainingVolume,
+                      totalCost: totalCost,
+                      avgPrice: avgPrice,
+                      currentValue: brokerRemainingVolume * avgPrice
+                    };
+                  }).filter(s => s !== null);
+                } else {
+                  // Original calculation for "All Brokers"
+                  nonAxsStocks = nonAxsStocks.map(stock => {
                     let totalCost = 0;
                     let remainingVolume = stock.remainingVolume;
                     
                     for (const purchase of stock.purchases) {
                       if (remainingVolume <= 0) break;
-                      
                       const volumeFromThisPurchase = Math.min(remainingVolume, purchase.volume);
                       const costFromThisPurchase = (volumeFromThisPurchase * purchase.price) + 
                         (purchase.fee * (volumeFromThisPurchase / purchase.volume));
-                      
                       totalCost += costFromThisPurchase;
                       remainingVolume -= volumeFromThisPurchase;
                     }
                     
                     return { ...stock, totalCost };
-                  })
-                  .sort((a, b) => b.totalCost - a.totalCost);
+                  });
+                }
+                
+                nonAxsStocks = nonAxsStocks.sort((a, b) => b.totalCost - a.totalCost);
 
                 const nonAxsTotal = nonAxsStocks.reduce((sum, s) => sum + convertCurrency(s.currentValue, s.currency), 0);
+                const nonAxsTotalCost = nonAxsStocks.reduce((sum, s) => sum + convertCurrency(s.totalCost, s.currency), 0);
+                const nonAxsPnl = nonAxsTotal - nonAxsTotalCost;
 
                 return h('div', { className: 'glass-panel rounded-xl p-6 border border-blue-500/20' },
                   h('div', { className: 'flex justify-between items-center mb-4' },
@@ -1547,9 +1585,16 @@
                       'US Markets'
                     ),
                     h('div', { className: 'text-right' },
-                      h('div', { className: 'text-xs text-gray-400' }, 'Total Value'),
+                      h('div', { className: 'text-xs text-gray-400 mb-1' }, 'Total Cost'),
+                      h('div', { className: 'text-sm font-mono text-orange-400 mb-2' }, 
+                        currencyView === 'AUD' ? `A$${formatCurrency(nonAxsTotalCost, 0)}` : `$${formatCurrency(nonAxsTotalCost / 1.42572, 0)}`
+                      ),
+                      h('div', { className: 'text-xs text-gray-400 mb-1' }, 'Current Value'),
                       h('div', { className: 'text-lg font-bold font-mono text-blue-400' }, 
-                        `${currencyView === 'USD' ? '$' : 'A$'}${formatCurrency(nonAxsTotal, 0)}`
+                        currencyView === 'AUD' ? `A$${formatCurrency(nonAxsTotal, 0)}` : `$${formatCurrency(nonAxsTotal / 1.42572, 0)}`
+                      ),
+                      h('div', { className: `text-xs font-mono ${nonAxsPnl >= 0 ? 'text-green-400' : 'text-red-400'}` }, 
+                        currencyView === 'AUD' ? `${nonAxsPnl >= 0 ? '+' : ''}A$${formatCurrency(Math.abs(nonAxsPnl), 0)}` : `${nonAxsPnl >= 0 ? '+' : ''}$${formatCurrency(Math.abs(nonAxsPnl) / 1.42572, 0)}`
                       )
                     )
                   ),
