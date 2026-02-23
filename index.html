@@ -1463,6 +1463,7 @@
               (() => {
                 const nonAxsStocks = activeStocks
                   .filter(s => s.index !== 'ASX')
+                  .filter(s => brokerFilter === 'All' || s.broker === brokerFilter)
                   .map(stock => {
                     // Calculate cost basis for REMAINING shares only (FIFO)
                     let totalCost = 0;
