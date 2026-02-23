@@ -1379,30 +1379,68 @@
             h('div', { className: 'grid grid-cols-1 xl:grid-cols-2 gap-6 mb-8' },
               // ASX Holdings
               (() => {
-                const axsStocks = activeStocks
-                  .filter(s => s.index === 'ASX')
-                  .filter(s => brokerFilter === 'All' || s.purchases.some(p => p.broker === brokerFilter))
-                  .map(stock => {
-                    // Calculate cost basis for REMAINING shares only (FIFO)
+                let axsStocks = activeStocks.filter(s => s.index === 'ASX');
+                
+                // If filtering by broker, split holdings by broker
+                if (brokerFilter !== 'All') {
+                  axsStocks = axsStocks.map(stock => {
+                    // Calculate holdings for this specific broker only
+                    const brokerPurchases = stock.purchases.filter(p => p.broker === brokerFilter);
+                    const brokerSales = stock.sales.filter(s => s.broker === brokerFilter);
+                    
+                    const brokerTotalVolume = brokerPurchases.reduce((sum, p) => sum + p.volume, 0);
+                    const brokerSoldVolume = brokerSales.reduce((sum, s) => sum + parseNumber(s.volume), 0);
+                    const brokerRemainingVolume = brokerTotalVolume - brokerSoldVolume;
+                    
+                    if (brokerRemainingVolume <= 0) return null;
+                    
+                    // Recalculate cost basis for broker purchases only
+                    let totalCost = 0;
+                    let remainingVolume = brokerRemainingVolume;
+                    
+                    for (const purchase of brokerPurchases) {
+                      if (remainingVolume <= 0) break;
+                      const volumeFromThis = Math.min(remainingVolume, purchase.volume);
+                      const costFromThis = (volumeFromThis * purchase.price) + 
+                        (purchase.fee * (volumeFromThis / purchase.volume));
+                      totalCost += costFromThis;
+                      remainingVolume -= volumeFromThis;
+                    }
+                    
+                    const avgPrice = brokerRemainingVolume > 0 ? totalCost / brokerRemainingVolume : 0;
+                    
+                    return {
+                      ...stock,
+                      remainingVolume: brokerRemainingVolume,
+                      totalCost: totalCost,
+                      avgPrice: avgPrice,
+                      currentValue: brokerRemainingVolume * avgPrice
+                    };
+                  }).filter(s => s !== null);
+                } else {
+                  // Original calculation for "All Brokers"
+                  axsStocks = axsStocks.map(stock => {
                     let totalCost = 0;
                     let remainingVolume = stock.remainingVolume;
                     
                     for (const purchase of stock.purchases) {
                       if (remainingVolume <= 0) break;
-                      
                       const volumeFromThisPurchase = Math.min(remainingVolume, purchase.volume);
                       const costFromThisPurchase = (volumeFromThisPurchase * purchase.price) + 
                         (purchase.fee * (volumeFromThisPurchase / purchase.volume));
-                      
                       totalCost += costFromThisPurchase;
                       remainingVolume -= volumeFromThisPurchase;
                     }
                     
                     return { ...stock, totalCost };
-                  })
-                  .sort((a, b) => b.totalCost - a.totalCost);
+                  });
+                }
+                
+                axsStocks = axsStocks.sort((a, b) => b.totalCost - a.totalCost);
 
                 const axsTotal = axsStocks.reduce((sum, s) => sum + convertCurrency(s.currentValue, s.currency), 0);
+                const axsTotalCost = axsStocks.reduce((sum, s) => sum + convertCurrency(s.totalCost, s.currency), 0);
+                const axsPnl = axsTotal - axsTotalCost;
 
                 return h('div', { className: 'glass-panel rounded-xl p-6 border border-green-500/20' },
                   h('div', { className: 'flex justify-between items-center mb-4' },
