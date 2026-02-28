@@ -2223,14 +2223,16 @@
                                       const value = context.parsed.y;
     
                                       // For High-Low Range bars, show both values
-                                      if (label === 'High-Low Range' && Array.isArray(context.parsed._custom)) {
-                                        const low = context.parsed._custom.barStart;
-                                        const high = context.parsed._custom.barEnd;
-                                        return [
-                                          `High: $${high.toFixed(2)}`,
-                                          `Low: $${low.toFixed(2)}`,
-                                          `Range: $${(high - low).toFixed(2)}`
-                                        ];
+                                      if (label === 'High-Low Range') {
+                                        const dataPoint = context.raw; // Get the raw data [low, high]
+                                        if (Array.isArray(dataPoint) && dataPoint.length === 2) {
+                                          const [low, high] = dataPoint;
+                                          return [
+                                            `High: $${high ? high.toFixed(2) : 'N/A'}`,
+                                            `Low: $${low ? low.toFixed(2) : 'N/A'}`,
+                                            `Range: $${(high && low) ? (high - low).toFixed(2) : 'N/A'}`
+                                          ];
+                                        }
                                       }
     
                                       return value !== null ? `${label}: $${value.toFixed(2)}` : '';
