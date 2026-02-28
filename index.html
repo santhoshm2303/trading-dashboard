@@ -696,6 +696,7 @@
       const [mainView, setMainView] = useState('portfolio');
       const [selectedTicker, setSelectedTicker] = useState(null);
       const [signalsDateRange, setSignalsDateRange] = useState(30); // days to show
+      const [signalsView, setSignalsView] = useState('chart');
       const [predictions, setPredictions] = useState(null);
       const [predictionsLoading, setPredictionsLoading] = useState(false);
       
@@ -1932,7 +1933,7 @@
                     h('select', {
                       value: signalsDateRange,
                       onChange: (e) => setSignalsDateRange(parseInt(e.target.value)),
-                      className: 'px-3 py-2 rounded-lg font-mono font-bold text-sm'
+                      className: 'px-3 py-2 rounded-lg font-mono font-bold text-sm bg-slate-800/80 border border-gray-700 text-white'
                     },
                       h('option', { value: 7 }, '7 days'),
                       h('option', { value: 14 }, '14 days'),
@@ -1945,20 +1946,56 @@
                     )
                   )
                 ),
-                h('div', { className: 'flex flex-wrap gap-2' },
-                  predictions.tickers && predictions.tickers.map(ticker =>
-                    h('button', {
-                      key: ticker,
-                      onClick: () => {
-                        setSelectedTicker(ticker);
-                        loadPredictions(ticker);
-                      },
-                      className: `px-4 py-2 rounded-lg font-mono font-bold transition ${
-                        selectedTicker === ticker
-                          ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg'
-                          : 'glass-panel text-gray-400 hover:text-white hover:bg-slate-700'
-                      }`
-                    }, ticker)
+                // US Stocks Section
+                h('div', { className: 'mb-6' },
+                  h('div', { className: 'text-sm font-bold text-gray-400 mb-3 flex items-center gap-2' },
+                    h('span', null, '🌎'),
+                    'US Markets'
+                  ),
+                  h('div', { className: 'flex flex-wrap gap-2' },
+                    predictions.tickers && predictions.tickers
+                      .filter(ticker => !ticker.endsWith('.AX'))
+                      .map(ticker =>
+                        h('button', {
+                          key: ticker,
+                          onClick: () => {
+                            setSelectedTicker(ticker);
+                            loadPredictions(ticker);
+                          },
+                          className: `px-4 py-2 rounded-lg font-mono font-bold transition ${
+                            selectedTicker === ticker
+                              ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg'
+                              : 'bg-slate-800/50 border border-blue-500/30 text-gray-300 hover:text-white hover:bg-slate-700 hover:border-blue-500/50'
+                          }`
+                        }, ticker)
+                      )
+                  )
+                ),
+                // Separator
+                h('div', { className: 'h-px bg-gradient-to-r from-transparent via-gray-600 to-transparent my-6' }),
+                // ASX Stocks Section
+                h('div', null,
+                  h('div', { className: 'text-sm font-bold text-gray-400 mb-3 flex items-center gap-2' },
+                    h('span', null, '🇦🇺'),
+                    'ASX'
+                  ),
+                  h('div', { className: 'flex flex-wrap gap-2' },
+                    predictions.tickers && predictions.tickers
+                      .filter(ticker => ticker.endsWith('.AX'))
+                      .map(ticker =>
+                        h('button', {
+                          key: ticker,
+                          onClick: () => {
+                            setSelectedTicker(ticker);
+                            loadPredictions(ticker);
+                          },
+                          className: `px-4 py-2 rounded-lg font-mono font-bold transition ${
+                            selectedTicker === ticker
+                              ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-lg'
+                              : 'bg-slate-800/50 border border-green-500/30 text-gray-300 hover:text-white hover:bg-slate-700 hover:border-green-500/50'
+                          }`
+                        }, ticker)
+                      )
                   )
                 )
               ),
@@ -2008,8 +2045,30 @@
                   })()
                 ),
 
-                // Interactive chart
-                h('div', { className: 'glass-panel rounded-xl p-6 border border-cyan-500/20 mb-6' },
+
+
+                // View toggle buttons
+                h('div', { className: 'flex justify-center gap-3 mb-6' },
+                  h('button', {
+                    onClick: () => setSignalsView('chart'),
+                    className: `px-6 py-3 rounded-lg font-bold transition ${
+                      signalsView === 'chart'
+                        ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg'
+                        : 'glass-panel text-gray-400 hover:text-white hover:bg-slate-700'
+                    }`
+                  }, '📈 Chart View'),
+                  h('button', {
+                    onClick: () => setSignalsView('table'),
+                    className: `px-6 py-3 rounded-lg font-bold transition ${
+                      signalsView === 'table'
+                        ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg'
+                        : 'glass-panel text-gray-400 hover:text-white hover:bg-slate-700'
+                    }`
+                  }, '📋 Table View')
+                ),
+
+                // Interactive chart (only show when chart view is selected)
+                signalsView === 'chart' && h('div', { className: 'glass-panel rounded-xl p-6 border border-cyan-500/20 mb-6' },
                   h('h3', { className: 'text-xl font-bold text-white mb-4 flex items-center gap-2' },
                     h('span', null, '📈'),
                     `${selectedTicker} - Price & Guidance (ODE Data)`
@@ -2209,7 +2268,8 @@
                 ),
 
                 // Recent predictions table
-                h('div', { className: 'glass-panel rounded-xl p-6 border border-cyan-500/20' },
+                // Recent predictions table (only show when table view is selected)
+                signalsView === 'table' && h('div', { className: 'glass-panel rounded-xl p-6 border border-cyan-500/20' },
                   h('h3', { className: 'text-xl font-bold text-white mb-4' }, '📋 Recent Predictions'),
                   h('div', { className: 'overflow-x-auto' },
                     h('table', { className: 'w-full' },
