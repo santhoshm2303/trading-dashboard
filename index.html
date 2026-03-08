@@ -240,7 +240,40 @@
         }
         // STRONG BUY: Strong uptrend + very big range
         else if (priceTrend > 3 && volatility > 8 && upside > 5) {
-          signal = '​​​​​​​​​​​​​​​​
+          signal = 'STRONG BUY';
+          score = (priceTrend * 0.4) + (volatility * 0.3) + (upside * 0.3) + 20;
+        }
+        // SELL: Trending down
+        else if (priceTrend < -1 && downside > 3) {
+          signal = 'SELL';
+          score = Math.abs(priceTrend * 0.5) + (downside * 0.5);
+        }
+        // STRONG SELL: Strong downtrend
+        else if (priceTrend < -3 && downside > 5) {
+          signal = 'STRONG SELL';
+          score = Math.abs(priceTrend * 0.5) + (downside * 0.5) + 20;
+        }
+
+        recommendations.push({
+          ticker,
+          isASX: ticker.endsWith('.AX'),
+          signal,
+          score,
+          volatility,
+          priceTrend,
+          upside,
+          downside,
+          currentPrice: latest.closeODE,
+          predHigh: latest.predHigh,
+          predLow: latest.predLow,
+          date: latest.date
+        });
+      });
+
+      // Sort by score (highest first)
+      return recommendations.sort((a, b) => b.score - a.score);
+    };
+
 
     
     
@@ -766,7 +799,6 @@
       const signalsChartInstance = useRef(null);
 
 
-      const signalsChartInstance = useRef(null);
 
       // Theme effect
       useEffect(() => {
@@ -2412,7 +2444,7 @@
             )
           ),
 
-          ),
+        
 
           // RECOMMENDATIONS VIEW
           mainView === 'recommendations' && h('div', { className: 'space-y-6' },
