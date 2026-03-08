@@ -2458,9 +2458,20 @@
             !recommendationsData ? h('div', { className: 'text-center py-12' },
               h('p', { className: 'text-gray-400 mb-4' }, 'Loading recommendations...'),
               h('button', {
-                onClick: () => setRecommendationsData(calculateRecommendations()),
+                onClick: () => {
+                  console.log('Button clicked!');
+                  console.log('Predictions:', predictions);
+                  if (!predictions || !predictions.predictions) {
+                    alert('No predictions data! Go to Trading Signals first and load data.');
+                    return;
+                  }
+                  const recs = calculateRecommendations();
+                  console.log('Generated recommendations:', recs);
+                  setRecommendationsData(recs);
+                },
                 className: 'px-6 py-3 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg font-semibold'
               }, 'Generate Recommendations')
+
             ) : h('div', null,
               // Header
               h('div', { className: 'glass-panel rounded-xl p-6 border border-cyan-500/20 mb-6' },
