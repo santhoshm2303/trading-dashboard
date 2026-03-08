@@ -1409,7 +1409,14 @@
                 h('button', {
                   onClick: () => {
                     setMainView('recommendations');
-                    setRecommendationsData(calculateRecommendations());
+                    // Load predictions first if not already loaded
+                    if (!predictions) {
+                      loadPredictions();
+                    }
+                    // Small delay to ensure predictions are loaded
+                    setTimeout(() => {
+                      setRecommendationsData(calculateRecommendations());
+                    }, 100);
                   },
                   className: `px-5 py-2 rounded-lg font-bold transition ${mainView === 'recommendations' ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg' : 'bg-slate-800/50 text-gray-400 hover:text-white hover:bg-slate-700'}`
                 }, '💡 Recommendations'),
