@@ -197,6 +197,56 @@
       return totalProfit;
     };
 
+
+    // Calculate recommendations based on predictions
+    const calculateRecommendations = () => {
+      if (!predictions || !predictions.predictions) return null;
+
+      const recommendations = [];
+      const tickers = [...new Set(predictions.predictions.map(p => p.ticker))];
+
+      tickers.forEach(ticker => {
+        const tickerPreds = predictions.predictions
+          .filter(p => p.ticker === ticker)
+          .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+        if (tickerPreds.length < 3) return;
+
+        const latest = tickerPreds[0];
+        const previous = tickerPreds[1];
+        
+        if (!latest.predHigh || !latest.predLow || !latest.closeODE) return;
+
+        // Calculate volatility (range as % of price)
+        const volatility = ((latest.predHigh - latest.predLow) / latest.closeODE) * 100;
+
+        // Calculate trend (is price going up or down?)
+        const priceTrend = previous && previous.closeODE 
+          ? ((latest.closeODE - previous.closeODE) / previous.closeODE) * 100
+          : 0;
+
+        // Calculate predicted upside/downside
+        const upside = ((latest.predHigh - latest.closeODE) / latest.closeODE) * 100;
+        const downside = ((latest.closeODE - latest.predLow) / latest.closeODE) * 100;
+
+        // Determine signal
+        let signal = 'HOLD';
+        let score = 0;
+
+        // BUY: Trending up + big range (volatility > 5%)
+        if (priceTrend > 1 && volatility > 5 && upside > 3) {
+          signal = 'BUY';
+          score = (priceTrend * 0.4) + (volatility * 0.3) + (upside * 0.3);
+        }
+        // STRONG BUY: Strong uptrend + very big range
+        else if (priceTrend > 3 && volatility > 8 && upside > 5) {
+          signal = '​​​​​​​​​​​​​​​​
+
+    
+    
+    
+    
+
     // Stock Modal Component
     function StockModal({ stock, onClose, activeTab, setActiveTab }) {
       const chartRef = useRef(null);
@@ -697,6 +747,10 @@
       const [selectedTicker, setSelectedTicker] = useState(null);
       const [signalsDateRange, setSignalsDateRange] = useState(30); // days to show
       const [signalsView, setSignalsView] = useState('chart');
+      const [theme, setTheme] = useState('dark'); // 'dark' or 'light'
+      const [deepDiveStock, setDeepDiveStock] = useState(null); // Stock for deep dive
+      const [recommendationsData, setRecommendationsData] = useState(null);
+
       const [predictions, setPredictions] = useState(null);
       const [predictionsLoading, setPredictionsLoading] = useState(false);
       
@@ -710,6 +764,22 @@
       const allocationChartInstance = useRef(null);
       const pnlChartInstance = useRef(null);
       const signalsChartInstance = useRef(null);
+
+
+      const signalsChartInstance = useRef(null);
+
+      // Theme effect
+      useEffect(() => {
+        if (theme === 'light') {
+          document.body.classList.add('light-theme');
+          document.body.classList.remove('dark-theme');
+        } else {
+          document.body.classList.add('dark-theme');
+          document.body.classList.remove('light-theme');
+        }
+      }, [theme]);
+
+
 
       // Render charts when switching to analytics view
       useEffect(() => {
@@ -1304,6 +1374,14 @@
                   },
                   className: `px-5 py-2 rounded-lg font-bold transition ${mainView === 'signals' ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg' : 'bg-slate-800/50 text-gray-400 hover:text-white hover:bg-slate-700'}`
                 }, '🎯 Trading Signals'),
+                h('button', {
+                  onClick: () => {
+                    setMainView('recommendations');
+                    setRecommendationsData(calculateRecommendations());
+                  },
+                  className: `px-5 py-2 rounded-lg font-bold transition ${mainView === 'recommendations' ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg' : 'bg-slate-800/50 text-gray-400 hover:text-white hover:bg-slate-700'}`
+                }, '💡 Recommendations'),
+                
                 h('a', {
                   href: '/scanner.html',
                   target: '_blank',
@@ -2334,7 +2412,428 @@
             )
           ),
 
+          ),
+
+          // RECOMMENDATIONS VIEW
+          mainView === 'recommendations' && h('div', { className: 'space-y-6' },
+            !recommendationsData ? h('div', { className: 'text-center py-12' },
+              h('p', { className: 'text-gray-400 mb-4' }, 'Loading recommendations...'),
+              h('button', {
+                onClick: () => setRecommendationsData(calculateRecommendations()),
+                className: 'px-6 py-3 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg font-semibold'
+              }, 'Generate Recommendations')
+            ) : h('div', null,
+              // Header
+              h('div', { className: 'glass-panel rounded-xl p-6 border border-cyan-500/20 mb-6' },
+                h('div', { className: 'flex justify-between items-center' },
+                  h('div', null,
+                    h('h2', { className: 'text-3xl font-bold text-white mb-2' }, '💡 Smart Recommendations'),
+                    h('p', { className: 'text-gray-400' }, 'AI-powered buy/sell signals based on trend and volatility analysis')
+                  ),
+                  h('button', {
+                    onClick: () => setRecommendationsData(calculateRecommendations()),
+                    className: 'px-4 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg font-semibold'
+                  }, '🔄 Refresh')
+                )
+              ),
+
+              // Traffic Light Summary
+              h('div', { className: 'grid grid-cols-2 md:grid-cols-5 gap-4 mb-6' },
+                [
+                  { label: 'STRONG BUY', color: 'emerald', icon: '🟢', count: recommendationsData.filter(r => r.signal === 'STRONG BUY').length },
+                  { label: 'BUY', color: 'green', icon: '🟢', count: recommendationsData.filter(r => r.signal === 'BUY').length },
+                  { label: 'HOLD', color: 'yellow', icon: '🟡', count: recommendationsData.filter(r => r.signal === 'HOLD').length },
+                  { label: 'SELL', color: 'orange', icon: '🔴', count: recommendationsData.filter(r => r.signal === 'SELL').length },
+                  { label: 'STRONG SELL', color: 'red', icon: '🔴', count: recommendationsData.filter(r => r.signal === 'STRONG SELL').length }
+                ].map(item =>
+                  h('div', { key: item.label, className: `glass-panel rounded-xl p-4 border border-${item.color}-500/20 text-center` },
+                    h('div', { className: 'text-3xl mb-2' }, item.icon),
+                    h('div', { className: `text-2xl font-bold font-mono text-${item.color}-400` }, item.count),
+                    h('div', { className: 'text-xs text-gray-400 font-bold uppercase' }, item.label)
+                  )
+                )
+              ),
+
+              // Top Buy Opportunities (ASX)
+              (() => {
+                const axsBuys = recommendationsData
+                  .filter(r => r.isASX && (r.signal === 'BUY' || r.signal === 'STRONG BUY'))
+                  .slice(0, 5);
+
+                return axsBuys.length > 0 && h('div', { className: 'glass-panel rounded-xl p-6 border border-green-500/20 mb-6' },
+                  h('h3', { className: 'text-xl font-bold text-white mb-4 flex items-center gap-2' },
+                    h('span', null, '🇦🇺'),
+                    'Top ASX Buy Opportunities'
+                  ),
+                  h('div', { className: 'space-y-3' },
+                    ...axsBuys.map((rec, idx) =>
+                      h('div', { 
+                        key: rec.ticker,
+                        className: 'flex items-center justify-between p-4 bg-slate-800/50 rounded-lg hover-lift cursor-pointer border border-green-500/30',
+                        onClick: () => {
+                          setDeepDiveStock(rec.ticker);
+                          setMainView('deepdive');
+                        }
+                      },
+                        h('div', { className: 'flex items-center gap-4' },
+                          h('div', { className: 'text-2xl font-bold text-gray-500' }, `#${idx + 1}`),
+                          h('div', null,
+                            h('div', { className: 'font-mono font-bold text-xl text-white' }, rec.ticker),
+                            h('div', { className: 'text-sm text-gray-400' }, `$${rec.currentPrice.toFixed(2)} · ${rec.date}`)
+                          )
+                        ),
+                        h('div', { className: 'flex items-center gap-6' },
+                          h('div', { className: 'text-right' },
+                            h('div', { className: 'text-xs text-gray-400' }, 'Trend'),
+                            h('div', { className: `text-lg font-bold ${rec.priceTrend >= 0 ? 'text-green-400' : 'text-red-400'}` }, 
+                              `${rec.priceTrend >= 0 ? '+' : ''}${rec.priceTrend.toFixed(1)}%`
+                            )
+                          ),
+                          h('div', { className: 'text-right' },
+                            h('div', { className: 'text-xs text-gray-400' }, 'Volatility'),
+                            h('div', { className: 'text-lg font-bold text-purple-400' }, `${rec.volatility.toFixed(1)}%`)
+                          ),
+                          h('div', { className: 'text-right' },
+                            h('div', { className: 'text-xs text-gray-400' }, 'Upside'),
+                            h('div', { className: 'text-lg font-bold text-cyan-400' }, `+${rec.upside.toFixed(1)}%`)
+                          ),
+                          h('span', { 
+                            className: `px-4 py-2 rounded-full font-bold text-sm ${
+                              rec.signal === 'STRONG BUY' 
+                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50' 
+                                : 'bg-green-500/20 text-green-400 border border-green-500/50'
+                            }`
+                          }, rec.signal)
+                        )
+                      )
+                    )
+                  )
+                );
+              })(),
+
+              // Top Buy Opportunities (US)
+              (() => {
+                const usBuys = recommendationsData
+                  .filter(r => !r.isASX && (r.signal === 'BUY' || r.signal === 'STRONG BUY'))
+                  .slice(0, 5);
+
+                return usBuys.length > 0 && h('div', { className: 'glass-panel rounded-xl p-6 border border-blue-500/20 mb-6' },
+                  h('h3', { className: 'text-xl font-bold text-white mb-4 flex items-center gap-2' },
+                    h('span', null, '🌎'),
+                    'Top US Buy Opportunities'
+                  ),
+                  h('div', { className: 'space-y-3' },
+                    ...usBuys.map((rec, idx) =>
+                      h('div', { 
+                        key: rec.ticker,
+                        className: 'flex items-center justify-between p-4 bg-slate-800/50 rounded-lg hover-lift cursor-pointer border border-blue-500/30',
+                        onClick: () => {
+                          setDeepDiveStock(rec.ticker);
+                          setMainView('deepdive');
+                        }
+                      },
+                        h('div', { className: 'flex items-center gap-4' },
+                          h('div', { className: 'text-2xl font-bold text-gray-500' }, `#${idx + 1}`),
+                          h('div', null,
+                            h('div', { className: 'font-mono font-bold text-xl text-white' }, rec.ticker),
+                            h('div', { className: 'text-sm text-gray-400' }, `$${rec.currentPrice.toFixed(2)} · ${rec.date}`)
+                          )
+                        ),
+                        h('div', { className: 'flex items-center gap-6' },
+                          h('div', { className: 'text-right' },
+                            h('div', { className: 'text-xs text-gray-400' }, 'Trend'),
+                            h('div', { className: `text-lg font-bold ${rec.priceTrend >= 0 ? 'text-green-400' : 'text-red-400'}` }, 
+                              `${rec.priceTrend >= 0 ? '+' : ''}${rec.priceTrend.toFixed(1)}%`
+                            )
+                          ),
+                          h('div', { className: 'text-right' },
+                            h('div', { className: 'text-xs text-gray-400' }, 'Volatility'),
+                            h('div', { className: 'text-lg font-bold text-purple-400' }, `${rec.volatility.toFixed(1)}%`)
+                          ),
+                          h('div', { className: 'text-right' },
+                            h('div', { className: 'text-xs text-gray-400' }, 'Upside'),
+                            h('div', { className: 'text-lg font-bold text-cyan-400' }, `+${rec.upside.toFixed(1)}%`)
+                          ),
+                          h('span', { 
+                            className: `px-4 py-2 rounded-full font-bold text-sm ${
+                              rec.signal === 'STRONG BUY' 
+                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50' 
+                                : 'bg-green-500/20 text-green-400 border border-green-500/50'
+                            }`
+                          }, rec.signal)
+                        )
+                      )
+                    )
+                  )
+                );
+              })(),
+
+              // Volatility Bar Chart
+              h('div', { className: 'glass-panel rounded-xl p-6 border border-purple-500/20 mb-6' },
+                h('h3', { className: 'text-xl font-bold text-white mb-4' }, '📊 Volatility Rankings'),
+                h('div', { className: 'space-y-2' },
+                  ...recommendationsData.slice(0, 15).map((rec, idx) =>
+                    h('div', { key: rec.ticker, className: 'flex items-center gap-3' },
+                      h('div', { className: 'w-20 font-mono text-sm text-gray-400 text-right' }, rec.ticker),
+                      h('div', { className: 'flex-1 relative h-8 bg-slate-800/50 rounded-lg overflow-hidden' },
+                        h('div', {
+                          className: `h-full bg-gradient-to-r ${
+                            rec.signal.includes('BUY') ? 'from-green-500 to-emerald-600' :
+                            rec.signal.includes('SELL') ? 'from-red-500 to-orange-600' :
+                            'from-gray-500 to-gray-600'
+                          }`,
+                          style: { width: `${Math.min(rec.volatility * 5, 100)}%` }
+                        }),
+                        h('div', { className: 'absolute inset-0 flex items-center justify-between px-3' },
+                          h('span', { className: 'text-xs font-bold text-white' }, `${rec.volatility.toFixed(1)}%`),
+                          h('span', { className: 'text-xs font-bold text-white' }, rec.signal)
+                        )
+                      )
+                    )
+                  )
+                )
+              ),
+
+              // Heatmap Grid
+              h('div', { className: 'glass-panel rounded-xl p-6 border border-cyan-500/20' },
+                h('h3', { className: 'text-xl font-bold text-white mb-4' }, '🔥 Signal Heatmap'),
+                h('div', { className: 'grid grid-cols-3 md:grid-cols-5 lg:grid-cols-7 gap-3' },
+                  ...recommendationsData.map(rec =>
+                    h('div', {
+                      key: rec.ticker,
+                      onClick: () => {
+                        setDeepDiveStock(rec.ticker);
+                        setMainView('deepdive');
+                      },
+                      className: `p-4 rounded-lg text-center cursor-pointer hover-lift border-2 ${
+                        rec.signal === 'STRONG BUY' ? 'bg-emerald-500/20 border-emerald-500' :
+                        rec.signal === 'BUY' ? 'bg-green-500/20 border-green-500' :
+                        rec.signal === 'HOLD' ? 'bg-yellow-500/20 border-yellow-500' :
+                        rec.signal === 'SELL' ? 'bg-orange-500/20 border-orange-500' :
+                        'bg-red-500/20 border-red-500'
+                      }`
+                    },
+                      h('div', { className: 'font-mono font-bold text-white text-sm mb-1' }, rec.ticker),
+                      h('div', { className: 'text-xs text-gray-300' }, `${rec.priceTrend >= 0 ? '↗' : '↘'} ${Math.abs(rec.priceTrend).toFixed(1)}%`)
+                    )
+                  )
+                )
+              )
+            )
+          ),
+
+          // STOCK DEEP DIVE VIEW
+          mainView === 'deepdive' && deepDiveStock && h('div', { className: 'space-y-6' },
+            // Header with back button
+            h('div', { className: 'glass-panel rounded-xl p-6 border border-cyan-500/20' },
+              h('div', { className: 'flex items-center justify-between mb-4' },
+                h('button', {
+                  onClick: () => setMainView('recommendations'),
+                  className: 'px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-semibold flex items-center gap-2'
+                }, 
+                  h('span', null, '←'),
+                  'Back to Recommendations'
+                ),
+                h('div', { className: 'flex gap-2' },
+                  predictions && predictions.tickers && predictions.tickers.map(ticker =>
+                    h('button', {
+                      key: ticker,
+                      onClick: () => setDeepDiveStock(ticker),
+                      className: `px-3 py-1 rounded-lg font-mono text-sm font-bold transition ${
+                        deepDiveStock === ticker
+                          ? 'bg-cyan-500 text-white'
+                          : 'bg-slate-700 text-gray-400 hover:text-white'
+                      }`
+                    }, ticker)
+                  )
+                )
+              ),
+              h('div', { className: 'flex items-center gap-4' },
+                h('h1', { className: 'text-5xl font-bold font-mono text-cyan-400' }, deepDiveStock),
+                h('span', { className: 'px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-full font-bold' }, 
+                  deepDiveStock.endsWith('.AX') ? '🇦🇺 ASX' : '🌎 US Market'
+                )
+              )
+            ),
+
+            // Portfolio Holdings for this stock
+            (() => {
+              const stock = holdings[deepDiveStock];
+              if (!stock || stock.remainingVolume === 0) {
+                return h('div', { className: 'glass-panel rounded-xl p-6 border border-orange-500/20' },
+                  h('p', { className: 'text-gray-400 text-center' }, '⚠️ You do not currently hold this stock')
+                );
+              }
+
+              const totalCostConverted = convertCurrency(stock.currentValue, stock.currency);
+              const pnl = calculatePnL(stock);
+              const pnlConverted = convertCurrency(pnl, stock.currency);
+
+              return h('div', { className: 'grid grid-cols-1 md:grid-cols-4 gap-4' },
+                h('div', { className: 'glass-panel rounded-xl p-5 border border-cyan-500/20' },
+                  h('div', { className: 'text-xs text-gray-400 mb-1 uppercase font-bold' }, 'Your Holdings'),
+                  h('div', { className: 'text-3xl font-bold font-mono text-cyan-400' }, formatCurrency(stock.remainingVolume, 0)),
+                  h('div', { className: 'text-xs text-gray-500 mt-1' }, 'shares')
+                ),
+                h('div', { className: 'glass-panel rounded-xl p-5 border border-purple-500/20' },
+                  h('div', { className: 'text-xs text-gray-400 mb-1 uppercase font-bold' }, 'Avg Buy Price'),
+                  h('div', { className: 'text-3xl font-bold font-mono text-white' }, 
+                    `${stock.currency === 'USD' ? '$' : 'A$'}${formatCurrency(stock.avgPrice, 2)}`
+                  ),
+                  h('div', { className: 'text-xs text-gray-500 mt-1' }, 'per share')
+                ),
+                h('div', { className: 'glass-panel rounded-xl p-5 border border-orange-500/20' },
+                  h('div', { className: 'text-xs text-gray-400 mb-1 uppercase font-bold' }, 'Total Value'),
+                  h('div', { className: 'text-3xl font-bold font-mono text-white' }, 
+                    `${currencyView === 'USD' ? '$' : 'A$'}${formatCurrency(totalCostConverted, 0)}`
+                  ),
+                  h('div', { className: 'text-xs text-gray-500 mt-1' }, 'current')
+                ),
+                h('div', { className: 'glass-panel rounded-xl p-5 border border-green-500/20' },
+                  h('div', { className: 'text-xs text-gray-400 mb-1 uppercase font-bold' }, 'Realized P&L'),
+                  h('div', { className: `text-3xl font-bold font-mono ${pnlConverted >= 0 ? 'text-green-400' : 'text-red-400'}` }, 
+                    `${pnlConverted >= 0 ? '+' : ''}${currencyView === 'USD' ? '$' : 'A$'}${formatCurrency(Math.abs(pnlConverted), 0)}`
+                  ),
+                  h('div', { className: 'text-xs text-gray-500 mt-1' }, 'from sales')
+                )
+              );
+            })(),
+
+            // Trading Signal Analysis
+            (() => {
+              if (!predictions || !predictions.predictions) return null;
+
+              const tickerPreds = predictions.predictions
+                .filter(p => p.ticker === deepDiveStock)
+                .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+              if (tickerPreds.length === 0) return null;
+
+              const latest = tickerPreds[0];
+              const previous = tickerPreds[1];
+
+              const volatility = latest.predHigh && latest.predLow && latest.closeODE
+                ? ((latest.predHigh - latest.predLow) / latest.closeODE) * 100
+                : 0;
+
+              const priceTrend = previous && previous.closeODE && latest.closeODE
+                ? ((latest.closeODE - previous.closeODE) / previous.closeODE) * 100
+                : 0;
+
+              const upside = latest.predHigh && latest.closeODE
+                ? ((latest.predHigh - latest.closeODE) / latest.closeODE) * 100
+                : 0;
+
+              const downside = latest.predLow && latest.closeODE
+                ? ((latest.closeODE - latest.predLow) / latest.closeODE) * 100
+                : 0;
+
+              return h('div', null,
+                h('div', { className: 'grid grid-cols-1 md:grid-cols-4 gap-4 mb-6' },
+                  h('div', { className: 'glass-panel rounded-xl p-5 border border-purple-500/20' },
+                    h('div', { className: 'text-xs text-gray-400 mb-1 uppercase font-bold' }, 'Current Price'),
+                    h('div', { className: 'text-3xl font-bold font-mono text-purple-400' }, 
+                      `$${latest.closeODE ? latest.closeODE.toFixed(2) : 'N/A'}`
+                    ),
+                    h('div', { className: 'text-xs text-gray-500 mt-1' }, latest.date)
+                  ),
+                  h('div', { className: 'glass-panel rounded-xl p-5 border border-green-500/20' },
+                    h('div', { className: 'text-xs text-gray-400 mb-1 uppercase font-bold' }, 'Predicted High'),
+                    h('div', { className: 'text-3xl font-bold font-mono text-green-400' }, 
+                      `$${latest.predHigh ? latest.predHigh.toFixed(2) : 'N/A'}`
+                    ),
+                    h('div', { className: `text-xs font-bold mt-1 ${upside >= 0 ? 'text-green-400' : 'text-gray-500'}` }, 
+                      `↗ ${upside.toFixed(1)}% upside`
+                    )
+                  ),
+                  h('div', { className: 'glass-panel rounded-xl p-5 border border-red-500/20' },
+                    h('div', { className: 'text-xs text-gray-400 mb-1 uppercase font-bold' }, 'Predicted Low'),
+                    h('div', { className: 'text-3xl font-bold font-mono text-red-400' }, 
+                      `$${latest.predLow ? latest.predLow.toFixed(2) : 'N/A'}`
+                    ),
+                    h('div', { className: `text-xs font-bold mt-1 ${downside >= 0 ? 'text-red-400' : 'text-gray-500'}` }, 
+                      `↘ ${downside.toFixed(1)}% downside`
+                    )
+                  ),
+                  h('div', { className: 'glass-panel rounded-xl p-5 border border-cyan-500/20' },
+                    h('div', { className: 'text-xs text-gray-400 mb-1 uppercase font-bold' }, 'Volatility'),
+                    h('div', { className: 'text-3xl font-bold font-mono text-cyan-400' }, 
+                      `${volatility.toFixed(1)}%`
+                    ),
+                    h('div', { className: `text-xs font-bold mt-1 ${priceTrend >= 0 ? 'text-green-400' : 'text-red-400'}` }, 
+                      `${priceTrend >= 0 ? '↗' : '↘'} ${Math.abs(priceTrend).toFixed(1)}% trend`
+                    )
+                  )
+                )
+              );
+            })(),
+
+            // Transaction History for this stock
+            (() => {
+              const stock = holdings[deepDiveStock];
+              if (!stock) return null;
+
+              return h('div', { className: 'glass-panel rounded-xl p-6 border border-cyan-500/20' },
+                h('h3', { className: 'text-xl font-bold text-white mb-4' }, '📜 Transaction History'),
+                h('div', { className: 'grid grid-cols-1 lg:grid-cols-2 gap-6' },
+                  // Purchases
+                  h('div', null,
+                    h('h4', { className: 'text-lg font-bold text-green-400 mb-3 flex items-center gap-2' },
+                      h('span', null, '📈'),
+                      `Purchases (${stock.purchases.length})`
+                    ),
+                    h('div', { className: 'space-y-2 max-h-96 overflow-y-auto' },
+                      ...stock.purchases.map((txn, idx) =>
+                        h('div', { key: idx, className: 'p-3 bg-slate-800/50 rounded-lg border border-green-500/20' },
+                          h('div', { className: 'flex justify-between items-start mb-2' },
+                            h('div', { className: 'font-mono text-white font-bold' }, 
+                              `${formatCurrency(txn.volume, 0)} @ ${stock.currency === 'USD' ? '$' : 'A$'}${formatCurrency(txn.price, 2)}`
+                            ),
+                            h('div', { className: 'text-xs text-gray-400' }, formatDate(txn.date))
+                          ),
+                          h('div', { className: 'flex justify-between text-xs' },
+                            h('span', { className: 'text-gray-400' }, txn.broker),
+                            h('span', { className: 'text-gray-500' }, 
+                              `Fee: ${stock.currency === 'USD' ? '$' : 'A$'}${formatCurrency(txn.fee, 2)}`
+                            )
+                          )
+                        )
+                      )
+                    )
+                  ),
+                  // Sales
+                  stock.sales.length > 0 && h('div', null,
+                    h('h4', { className: 'text-lg font-bold text-orange-400 mb-3 flex items-center gap-2' },
+                      h('span', null, '📉'),
+                      `Sales (${stock.sales.length})`
+                    ),
+                    h('div', { className: 'space-y-2 max-h-96 overflow-y-auto' },
+                      ...stock.sales.map((txn, idx) =>
+                        h('div', { key: idx, className: 'p-3 bg-slate-800/50 rounded-lg border border-orange-500/20' },
+                          h('div', { className: 'flex justify-between items-start mb-2' },
+                            h('div', { className: 'font-mono text-white font-bold' }, 
+                              `${formatCurrency(parseNumber(txn.volume), 0)} @ ${stock.currency === 'USD' ? '$' : 'A$'}${formatCurrency(parseNumber(txn.price), 2)}`
+                            ),
+                            h('div', { className: 'text-xs text-gray-400' }, formatDate(txn.date))
+                          ),
+                          h('div', { className: 'flex justify-between text-xs' },
+                            h('span', { className: 'text-gray-400' }, txn.broker),
+                            h('span', { className: 'text-gray-500' }, 
+                              `Fee: ${stock.currency === 'USD' ? '$' : 'A$'}${formatCurrency(parseNumber(txn.fee), 2)}`
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              );
+            })()
+          ),
+
           // Modals
+
+
           showModal && selectedStock && h(StockModal, { 
             stock: selectedStock, 
             onClose: () => setShowModal(false),
