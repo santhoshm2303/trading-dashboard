@@ -1330,6 +1330,7 @@
         totalFees = Object.values(feeByBroker).reduce((sum, val) => sum + val, 0);
 
         data.transactions.forEach(txn => {
+          if (!txn.date) return; // Skip transactions without dates
           const [day, month, year] = txn.date.split('/');
           const monthKey = `${year}-${month.padStart(2, '0')}`;
           tradingByMonth[monthKey] = (tradingByMonth[monthKey] || 0) + 1;
