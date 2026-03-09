@@ -199,14 +199,14 @@
 
 
     // Calculate recommendations based on predictions
-    const calculateRecommendations = () => {
-      if (!predictions || !predictions.predictions) return null;
+    const calculateRecommendations = (predData) => {
+      if (!predData || !predData.predictions) return null;
 
       const recommendations = [];
-      const tickers = [...new Set(predictions.predictions.map(p => p.ticker))];
+      const tickers = [...new Set(predData.predictions.map(p => p.ticker))];
 
       tickers.forEach(ticker => {
-        const tickerPreds = predictions.predictions
+        const tickerPreds = predData.predictions
           .filter(p => p.ticker === ticker)
           .sort((a, b) => new Date(b.date) - new Date(a.date));
 
@@ -816,7 +816,7 @@
         if (mainView === 'recommendations' && !recommendationsData && predictions && predictions.predictions) {
           const timer = setTimeout(() => {
             console.log('🤖 Auto-generating recommendations...');
-            const recs = calculateRecommendations();
+            const recs = calculateRecommendations(predictions);
             console.log('✅ Generated:', recs);
             setRecommendationsData(recs);
           }, 500);
@@ -2476,7 +2476,7 @@
                     alert('No predictions data! Go to Trading Signals first and load data.');
                     return;
                   }
-                  const recs = calculateRecommendations();
+                  const recs = calculateRecommendations(predictions);
                   console.log('Generated recommendations:', recs);
                   setRecommendationsData(recs);
                 },
