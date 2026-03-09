@@ -2454,8 +2454,13 @@
         
 
           // RECOMMENDATIONS VIEW
-          mainView === 'recommendations' && h('div', { className: 'space-y-6' },
-            !recommendationsData ? h('div', { className: 'text-center py-12' },
+          mainView === 'recommendations' && (() => {
+            // Auto-generate on first load
+            if (!recommendationsData && predictions && predictions.predictions) {
+              setTimeout(() => setRecommendationsData(calculateRecommendations()), 300);
+            }
+            return h('div', { className: 'space-y-6' },
+              !recommendationsData ? h('div', { className: 'text-center py-12' },
               h('p', { className: 'text-gray-400 mb-4' }, 'Loading recommendations...'),
               h('button', {
                 onClick: () => {
