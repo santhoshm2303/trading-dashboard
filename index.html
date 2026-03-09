@@ -811,7 +811,18 @@
         }
       }, [theme]);
 
-
+      // AUTO-GENERATE RECOMMENDATIONS
+      useEffect(() => {
+        if (mainView === 'recommendations' && !recommendationsData && predictions && predictions.predictions) {
+          const timer = setTimeout(() => {
+            console.log('🤖 Auto-generating recommendations...');
+            const recs = calculateRecommendations();
+            console.log('✅ Generated:', recs);
+            setRecommendationsData(recs);
+          }, 500);
+          return () => clearTimeout(timer);
+        }
+      }, [mainView, recommendationsData, predictions]);
 
       // Render charts when switching to analytics view
       useEffect(() => {
@@ -2454,12 +2465,7 @@
         
 
           // RECOMMENDATIONS VIEW
-          mainView === 'recommendations' && (() => {
-            // Auto-generate on first load
-            if (!recommendationsData && predictions && predictions.predictions) {
-              setTimeout(() => setRecommendationsData(calculateRecommendations()), 300);
-            }
-            return h('div', { className: 'space-y-6' },
+          mainView === 'recommendations' && h('div', { className: 'space-y-6' },
               !recommendationsData ? h('div', { className: 'text-center py-12' },
               h('p', { className: 'text-gray-400 mb-4' }, 'Loading recommendations...'),
               h('button', {
