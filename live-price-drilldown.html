@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>📊 Live Price Viewer</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+  <style>
+    * {
+      -webkit-tap-highlight-color: transparent;
+      -webkit-touch-callout: none;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #0f172a;
+      touch-action: manipulation;
+    }
+    .stock-tile, .option-tile {
+      transition: transform 0.2s ease;
+      cursor: pointer;
+    }
+    .stock-tile:active, .option-tile:active {
+      transform: scale(0.95);
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script>
+    const { useState, useEffect, useRef } = React;
+    const h = React.createElement;
+
+    const SHEET_ID = "14s8og9ufXnpHzWCToM0pLfrOZ6w_02Ee84LUm3yFI98";
+    
+    const STOCKS = {
+      US: ["BMNR", "SCLX", "COO", "ACHR", "ABTC", "RZLT", "GPUS", "NAVN", "ZNTL", "HYMC", "EPRX", "GDXU", "STEX"],
+      ASX: ["TLX.AX", "MRD.AX", "ALR.AX", "SPD.AX", "LKY.AX", "MSB.AX", "FMG.AX"]
+    };
+
+    // Mock data generator
+    function generateMockData() {
+      const allStocks = [...STOCKS.US, ...STOCKS.ASX];
+      const data = {};
+      
+      allStocks.forEach(ticker => {
+        const basePrice = Math.random() * 50 + 10;
+        const points = [];
+        const now = new Date();
+        
+        for (let i = 29; i >= 0; i--) {
+          const date = new Date(now.getTime() - i * 5 * 60000);
+          const volatility = 0.02;
+          const change = (Math.random() - 0.5) * volatility;
+          const price = basePrice * (1 + change);
+          
+          points.push({
+            timestamp: date.toISOString(),
+            price: parseFloat(price.toFixed(2)),
+            volume: Math.floor(Math.random() * 100000 + 10000)
+          });
+        }
+        
+        data[ticker] = points;
+      });
+      
+      return data;
+    }
+
+    // STEP 1: Stock Selection Screen
+    function StockSelectionScreen({ onSelectStock, onBack }) {
+      const [allData, setAllData] = useState({});
+      const [loading, setLoading] = useState(true);
+
+      useEffect(() => {
+        loadData();
+      }, []);
+
+      const loadData = async () => {
+        setLoading(true);
+        try {
+          // Replace with real API call: await fetch('/api/fetch-live-updates')
+          const data = generateMockData();
+          setAllData(data);
+        } catch (error) {
+          console.error('Failed to load data:', error);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const getStockStats = (ticker) => {
+        const data = allData[ticker] || [];
+        if (data.length === 0) return { lastPrice: null, change: 0 };
+        const lastPrice = data[data.length - 1].price;
+        const firstPrice = data[0].price;
+        const change = ((lastPrice - firstPrice) / firstPrice * 100);
+        return { lastPrice, change };
+      };
+
+      return h('div', { className: 'min-h-screen bg-slate-900 text-white pb-8' },
+        // Header
+        h('div', { className: 'bg-gradient-to-r from-purple-600 to-pink-600 p-6 pb-8 sticky top-0 z-10 shadow-xl' },
+          onBack && h('button', {
+            onClick: onBack,
+            className: 'mb-4 flex items-center gap-2 text-white/90 hover:text-white transition'
+          },
+            h('span', { className: 'text-2xl' }, '←'),
+            h('span', { className: 'font-semibold' }, 'Back')
+          ),
+          h('div', { className: 'text-center' },
+            h('h1', { className: 'text-3xl font-bold mb-2' }, '📊 Live Price Viewer'),
+            h('p', { className: 'text-white/80' }, 'Select a stock to view')
+          )
+        ),
+
+        h('div', { className: 'px-4 mt-6' },
+          // US Markets Section
+          h('div', { className: 'mb-8' },
+            h('div', { className: 'flex items-center gap-3 mb-4' },
+              h('div', { className: 'w-2 h-8 bg-gradient-to-b from-cyan-400 to-blue-500 rounded-full' }),
+              h('h2', { className: 'text-2xl font-bold' }, '🇺🇸 US Markets'),
+              h('span', { className: 'text-slate-400 text-sm ml-2' }, `${STOCKS.US.length} stocks`)
+            ),
+            h('div', { className: 'grid grid-cols-2 sm:grid-cols-3 gap-3' },
+              STOCKS.US.map(ticker => {
+                const { lastPrice, change } = getStockStats(ticker);
+                return h('div', {
+                  key: ticker,
+                  className: 'stock-tile bg-gradient-to-br from-slate-800 to-slate-700 border border-slate-600 rounded-2xl p-4',
+                  onClick: () => onSelectStock(ticker, 'US', allData)
+                },
+                  h('div', { className: 'text-2xl font-bold text-cyan-400 mb-2' }, ticker),
+                  lastPrice && h('div', {},
+                    h('div', { className: 'text-xl font-bold text-white mb-1' }, `$${lastPrice.toFixed(2)}`),
+                    h('div', { 
+                      className: `text-sm font-semibold ${change >= 0 ? 'text-green-400' : 'text-red-400'}` 
+                    }, `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`)
+                  ),
+                  h('div', { className: 'text-xs text-slate-400 mt-2' }, 'Tap to view')
+                );
+              })
+            )
+          ),
+
+          // ASX Markets Section
+          h('div', {},
+            h('div', { className: 'flex items-center gap-3 mb-4' },
+              h('div', { className: 'w-2 h-8 bg-gradient-to-b from-orange-400 to-red-500 rounded-full' }),
+              h('h2', { className: 'text-2xl font-bold' }, '🇦🇺 ASX Markets'),
+              h('span', { className: 'text-slate-400 text-sm ml-2' }, `${STOCKS.ASX.length} stocks`)
+            ),
+            h('div', { className: 'grid grid-cols-2 sm:grid-cols-3 gap-3' },
+              STOCKS.ASX.map(ticker => {
+                const { lastPrice, change } = getStockStats(ticker);
+                return h('div', {
+                  key: ticker,
+                  className: 'stock-tile bg-gradient-to-br from-slate-800 to-slate-700 border border-slate-600 rounded-2xl p-4',
+                  onClick: () => onSelectStock(ticker, 'ASX', allData)
+                },
+                  h('div', { className: 'text-2xl font-bold text-orange-400 mb-2' }, 
+                    ticker.replace('.AX', '')
+                  ),
+                  lastPrice && h('div', {},
+                    h('div', { className: 'text-xl font-bold text-white mb-1' }, `$${lastPrice.toFixed(2)}`),
+                    h('div', { 
+                      className: `text-sm font-semibold ${change >= 0 ? 'text-green-400' : 'text-red-400'}` 
+                    }, `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`)
+                  ),
+                  h('div', { className: 'text-xs text-slate-400 mt-2' }, 'Tap to view')
+                );
+              })
+            )
+          )
+        )
+      );
+    }
+
+    // STEP 2: View Options Screen
+    function ViewOptionsScreen({ stock, market, onSelectView, onBack }) {
+      const options = [
+        { 
+          id: 'chart', 
+          name: 'Price Chart', 
+          icon: '📈', 
+          color: 'from-cyan-500 to-blue-600',
+          desc: 'Visual line chart with trends'
+        },
+        { 
+          id: 'table', 
+          name: 'Data Table', 
+          icon: '📋', 
+          color: 'from-green-500 to-emerald-600',
+          desc: 'Detailed price updates list'
+        }
+      ];
+
+      return h('div', { className: 'min-h-screen bg-slate-900 text-white' },
+        h('div', { className: 'bg-gradient-to-r from-purple-600 to-pink-600 p-6 pb-8' },
+          h('button', {
+            onClick: onBack,
+            className: 'mb-4 flex items-center gap-2 text-white/90 hover:text-white transition'
+          },
+            h('span', { className: 'text-2xl' }, '←'),
+            h('span', { className: 'font-semibold' }, 'Back to Stocks')
+          ),
+          h('div', { className: 'text-center' },
+            h('div', { className: 'inline-block px-6 py-3 bg-white/20 backdrop-blur-sm rounded-full mb-4' },
+              h('span', { className: `text-3xl font-bold ${market === 'ASX' ? 'text-orange-300' : 'text-cyan-300'}` }, 
+                stock
+              ),
+              h('span', { className: 'text-white/80 ml-3 text-lg' }, `${market} Market`)
+            ),
+            h('h1', { className: 'text-2xl font-bold mb-2' }, 'Choose View Type'),
+            h('p', { className: 'text-white/80' }, 'Select how you want to see the data')
+          )
+        ),
+
+        h('div', { className: 'p-6' },
+          h('div', { className: 'grid gap-4 max-w-md mx-auto' },
+            options.map(option =>
+              h('div', {
+                key: option.id,
+                className: `option-tile bg-gradient-to-br ${option.color} rounded-2xl p-8 shadow-xl`,
+                onClick: () => onSelectView(option.id)
+              },
+                h('div', { className: 'text-6xl mb-4 text-center' }, option.icon),
+                h('h3', { className: 'text-2xl font-bold text-white mb-2 text-center' }, option.name),
+                h('p', { className: 'text-white/90 text-center' }, option.desc)
+              )
+            )
+          )
+        )
+      );
+    }
+
+    // Price Chart Component
+    function PriceChart({ data, ticker }) {
+      const chartRef = useRef(null);
+      const chartInstance = useRef(null);
+
+      useEffect(() => {
+        if (!chartRef.current || !data || data.length === 0) return;
+
+        const ctx = chartRef.current.getContext('2d');
+        
+        if (chartInstance.current) {
+          chartInstance.current.destroy();
+        }
+
+        const labels = data.map(d => new Date(d.timestamp).toLocaleTimeString('en-US', { 
+          hour: '2-digit', minute: '2-digit', hour12: false 
+        }));
+        const prices = data.map(d => d.price);
+
+        const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+        gradient.addColorStop(0, 'rgba(6, 182, 212, 0.5)');
+        gradient.addColorStop(1, 'rgba(6, 182, 212, 0.0)');
+
+        chartInstance.current = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels,
+            datasets: [{
+              label: `${ticker} Price`,
+              data: prices,
+              borderColor: '#06b6d4',
+              backgroundColor: gradient,
+              borderWidth: 3,
+              fill: true,
+              tension: 0.4,
+              pointRadius: 3,
+              pointHoverRadius: 8,
+              pointBackgroundColor: '#06b6d4',
+              pointBorderColor: '#fff',
+              pointBorderWidth: 2
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { intersect: false, mode: 'index' },
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                titleColor: '#06b6d4',
+                bodyColor: '#fff',
+                borderColor: '#06b6d4',
+                borderWidth: 1,
+                padding: 16,
+                displayColors: false,
+                titleFont: { size: 14, weight: 'bold' },
+                bodyFont: { size: 16 },
+                callbacks: {
+                  label: (context) => `$${context.parsed.y.toFixed(2)}`
+                }
+              }
+            },
+            scales: {
+              x: {
+                grid: { color: 'rgba(148, 163, 184, 0.1)', drawBorder: false },
+                ticks: { color: '#94a3b8', maxTicksLimit: 6, font: { size: 11 } }
+              },
+              y: {
+                grid: { color: 'rgba(148, 163, 184, 0.1)', drawBorder: false },
+                ticks: { 
+                  color: '#94a3b8',
+                  font: { size: 12 },
+                  callback: (value) => `$${value.toFixed(2)}`
+                }
+              }
+            }
+          }
+        });
+
+        return () => {
+          if (chartInstance.current) chartInstance.current.destroy();
+        };
+      }, [data, ticker]);
+
+      return h('canvas', { ref: chartRef });
+    }
+
+    // STEP 3A: Chart View
+    function ChartView({ stock, data, onBack }) {
+      if (!data || data.length === 0) {
+        return h('div', { className: 'min-h-screen bg-slate-900 text-white flex items-center justify-center' },
+          h('div', { className: 'text-center' },
+            h('div', { className: 'text-6xl mb-4' }, '📊'),
+            h('div', { className: 'text-xl text-slate-400' }, 'No data available')
+          )
+        );
+      }
+
+      const lastPrice = data[data.length - 1].price;
+      const firstPrice = data[0].price;
+      const change = ((lastPrice - firstPrice) / firstPrice * 100);
+
+      return h('div', { className: 'min-h-screen bg-slate-900 text-white pb-8' },
+        h('div', { className: 'bg-gradient-to-r from-cyan-500 to-blue-600 p-6 sticky top-0 z-10 shadow-xl' },
+          h('button', {
+            onClick: onBack,
+            className: 'mb-4 flex items-center gap-2 text-white/90 hover:text-white transition'
+          },
+            h('span', { className: 'text-2xl' }, '←'),
+            h('span', { className: 'font-semibold' }, 'Back')
+          ),
+          h('div', { className: 'text-center' },
+            h('h1', { className: 'text-3xl font-bold mb-3' }, stock),
+            h('div', { className: 'text-5xl font-bold mb-2' }, `$${lastPrice.toFixed(2)}`),
+            h('div', { 
+              className: `text-xl font-semibold ${change >= 0 ? 'text-green-300' : 'text-red-300'}` 
+            }, `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`),
+            h('div', { className: 'text-sm text-white/70 mt-2' }, `${data.length} data points`)
+          )
+        ),
+
+        h('div', { className: 'p-4' },
+          h('div', { className: 'bg-slate-800 rounded-2xl p-4 shadow-xl' },
+            h('div', { className: 'h-80' },
+              h(PriceChart, { data, ticker: stock })
+            )
+          )
+        )
+      );
+    }
+
+    // STEP 3B: Table View
+    function TableView({ stock, data, onBack }) {
+      if (!data || data.length === 0) {
+        return h('div', { className: 'min-h-screen bg-slate-900 text-white flex items-center justify-center' },
+          h('div', { className: 'text-center' },
+            h('div', { className: 'text-6xl mb-4' }, '📋'),
+            h('div', { className: 'text-xl text-slate-400' }, 'No data available')
+          )
+        );
+      }
+
+      const lastPrice = data[data.length - 1].price;
+      const firstPrice = data[0].price;
+      const change = ((lastPrice - firstPrice) / firstPrice * 100);
+
+      return h('div', { className: 'min-h-screen bg-slate-900 text-white pb-8' },
+        h('div', { className: 'bg-gradient-to-r from-green-500 to-emerald-600 p-6 sticky top-0 z-10 shadow-xl' },
+          h('button', {
+            onClick: onBack,
+            className: 'mb-4 flex items-center gap-2 text-white/90 hover:text-white transition'
+          },
+            h('span', { className: 'text-2xl' }, '←'),
+            h('span', { className: 'font-semibold' }, 'Back')
+          ),
+          h('div', { className: 'text-center' },
+            h('h1', { className: 'text-3xl font-bold mb-3' }, stock),
+            h('div', { className: 'text-4xl font-bold mb-2' }, `$${lastPrice.toFixed(2)}`),
+            h('div', { 
+              className: `text-lg font-semibold ${change >= 0 ? 'text-green-300' : 'text-red-300'}` 
+            }, `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`)
+          )
+        ),
+
+        h('div', { className: 'p-4' },
+          h('div', { className: 'bg-slate-800 rounded-2xl overflow-hidden shadow-xl' },
+            h('table', { className: 'w-full text-sm' },
+              h('thead', {},
+                h('tr', { className: 'bg-slate-700' },
+                  h('th', { className: 'text-left py-4 px-4 text-slate-300 font-bold' }, 'Time'),
+                  h('th', { className: 'text-right py-4 px-4 text-slate-300 font-bold' }, 'Price'),
+                  h('th', { className: 'text-right py-4 px-4 text-slate-300 font-bold' }, 'Change')
+                )
+              ),
+              h('tbody', {},
+                [...data].reverse().map((point, idx) => {
+                  const prevIdx = data.length - idx - 2;
+                  const prevPoint = prevIdx >= 0 ? data[prevIdx] : point;
+                  const changeVal = ((point.price - prevPoint.price) / prevPoint.price * 100);
+                  
+                  return h('tr', { 
+                    key: idx,
+                    className: 'border-b border-slate-700 active:bg-slate-700'
+                  },
+                    h('td', { className: 'py-4 px-4 text-slate-300' }, 
+                      new Date(point.timestamp).toLocaleTimeString()
+                    ),
+                    h('td', { className: 'py-4 px-4 text-right font-bold text-cyan-400 text-lg' }, 
+                      `$${point.price.toFixed(2)}`
+                    ),
+                    h('td', { 
+                      className: `py-4 px-4 text-right font-semibold ${
+                        changeVal >= 0 ? 'text-green-400' : 'text-red-400'
+                      }` 
+                    }, 
+                      idx < data.length - 1 ? `${changeVal >= 0 ? '+' : ''}${changeVal.toFixed(2)}%` : '-'
+                    )
+                  );
+                })
+              )
+            )
+          )
+        )
+      );
+    }
+
+    // Main App with Navigation
+    function LivePriceApp() {
+      const [currentScreen, setCurrentScreen] = useState('stock-selection');
+      const [selectedStock, setSelectedStock] = useState(null);
+      const [selectedMarket, setSelectedMarket] = useState(null);
+      const [selectedView, setSelectedView] = useState(null);
+      const [stockData, setStockData] = useState({});
+
+      const handleSelectStock = (stock, market, allData) => {
+        setSelectedStock(stock);
+        setSelectedMarket(market);
+        setStockData(allData);
+        setCurrentScreen('view-options');
+      };
+
+      const handleSelectView = (view) => {
+        setSelectedView(view);
+        setCurrentScreen('data-view');
+      };
+
+      const handleBackToStocks = () => {
+        setCurrentScreen('stock-selection');
+        setSelectedStock(null);
+        setSelectedMarket(null);
+        setSelectedView(null);
+      };
+
+      const handleBackToOptions = () => {
+        setCurrentScreen('view-options');
+        setSelectedView(null);
+      };
+
+      if (currentScreen === 'stock-selection') {
+        return h(StockSelectionScreen, { 
+          onSelectStock: handleSelectStock,
+          onBack: null // Can add back button here if needed
+        });
+      }
+
+      if (currentScreen === 'view-options') {
+        return h(ViewOptionsScreen, {
+          stock: selectedStock,
+          market: selectedMarket,
+          onSelectView: handleSelectView,
+          onBack: handleBackToStocks
+        });
+      }
+
+      if (currentScreen === 'data-view') {
+        const data = stockData[selectedStock] || [];
+        
+        if (selectedView === 'chart') {
+          return h(ChartView, { 
+            stock: selectedStock, 
+            data, 
+            onBack: handleBackToOptions 
+          });
+        }
+        
+        if (selectedView === 'table') {
+          return h(TableView, { 
+            stock: selectedStock, 
+            data, 
+            onBack: handleBackToOptions 
+          });
+        }
+      }
+
+      return null;
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(h(LivePriceApp));
+  </script>
+</body>
+</html>
